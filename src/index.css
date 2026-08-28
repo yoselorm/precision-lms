@@ -2,8 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fixed-viewport app shell: every page scrolls inside its own designated
+   pane (overflow-y-auto), never the document itself. Without this, a tall
+   page (e.g. a long quiz) can inflate body/html height and the whole app
+   scrolls upward past its own chrome, revealing blank space beneath it. */
 html, body, #root {
   height: 100%;
+  overflow: hidden;
 }
 
 body {

@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import { selectAllClasses, addClass } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllUsers, selectApprovedTrainers, selectLearners } from "../store/slices/usersSlice";
+import { pushToast } from "../store/slices/uiSlice";
 
 function ClassFormModal({ onClose }) {
   const dispatch = useDispatch();
@@ -35,12 +36,13 @@ function ClassFormModal({ onClose }) {
     e.preventDefault();
     if (!form.title.trim() || !form.courseId || !form.trainerId || !form.startDate || !form.endDate) return;
     dispatch(addClass(form));
+    dispatch(pushToast({ type: "success", message: `"${form.title}" class was created.` }));
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6">
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Set up a new class</h2>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">

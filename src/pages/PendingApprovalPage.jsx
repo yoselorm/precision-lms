@@ -1,11 +1,12 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Clock, Ban, LogOut, GraduationCap } from "lucide-react";
-import { selectCurrentUser, logout } from "../store/slices/authSlice";
+import { Clock, Ban, LogOut, Eye, GraduationCap } from "lucide-react";
+import { selectCurrentUser, selectRealUser, logout, stopPreview } from "../store/slices/authSlice";
 
 export default function PendingApprovalPage() {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
+  const realUser = useSelector(selectRealUser);
   const isDenied = currentUser?.status === "denied";
 
   return (
@@ -25,12 +26,21 @@ export default function PendingApprovalPage() {
             ? `Hi ${currentUser?.name?.split(" ")[0]}, an admin has reviewed your trainer signup and it wasn't approved at this time. Reach out to your programme admin if you think this is a mistake.`
             : `Thanks for signing up, ${currentUser?.name?.split(" ")[0]}. An admin needs to review and approve trainer accounts before you can access class management, materials, or assignments. No action needed on your end.`}
         </p>
-        <button
-          onClick={() => dispatch(logout())}
-          className="mx-auto mt-6 flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50"
-        >
-          <LogOut size={14} /> Log out
-        </button>
+        {realUser ? (
+          <button
+            onClick={() => dispatch(stopPreview())}
+            className="mx-auto mt-6 flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50"
+          >
+            <Eye size={14} /> Exit preview
+          </button>
+        ) : (
+          <button
+            onClick={() => dispatch(logout())}
+            className="mx-auto mt-6 flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50"
+          >
+            <LogOut size={14} /> Log out
+          </button>
+        )}
       </div>
     </div>
   );

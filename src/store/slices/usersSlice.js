@@ -15,12 +15,14 @@ const usersSlice = createSlice({
       reducer(state, action) {
         state.users.push(action.payload);
       },
-      prepare({ name, department, role, managerId, status }) {
+      prepare({ name, email, password, department, role, managerId, status }) {
         const avatarSeed = AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
         return {
           payload: {
             id: `u-${nanoid(6)}`,
             name,
+            email: email || "",
+            password: password || "",
             department,
             role,
             managerId: managerId || null,
@@ -53,6 +55,8 @@ export default usersSlice.reducer;
 
 export const selectAllUsers = (state) => state.users.users;
 export const selectUserById = (state, userId) => state.users.users.find((u) => u.id === userId);
+export const selectUserByEmail = (state, email) =>
+  state.users.users.find((u) => (u.email || "").toLowerCase() === (email || "").toLowerCase());
 export const selectTeamByManager = (state, managerId) =>
   state.users.users.filter((u) => u.managerId === managerId);
 export const selectTrainers = (state) => state.users.users.filter((u) => u.role === "trainer");

@@ -1,9 +1,23 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { GraduationCap, ShieldCheck, BookOpen, Clock, ArrowRight } from "lucide-react";
+import {
+  GraduationCap,
+  ShieldCheck,
+  BookOpen,
+  Clock,
+  ArrowRight,
+  Mail,
+  Lock,
+  Loader2,
+  AlertCircle,
+  ChevronDown,
+  Copy,
+  HelpCircle,
+} from "lucide-react";
 import { login } from "../store/slices/authSlice";
-import { selectAllUsers, addUser } from "../store/slices/usersSlice";
+import { selectAllUsers, addUser, selectUserByEmail } from "../store/slices/usersSlice";
+import { pushToast } from "../store/slices/uiSlice";
 
 const ROLE_META = {
   learner: { label: "Learner", icon: BookOpen, color: "#16a34a" },
@@ -11,71 +25,215 @@ const ROLE_META = {
   trainer: { label: "Trainer", icon: GraduationCap, color: "#7c3aed" },
 };
 
-function DemoLoginTab({ onLoggedIn }) {
-  const dispatch = useDispatch();
-  const users = useSelector(selectAllUsers);
-  const groups = ["admin", "trainer", "learner"];
+// Simulates a network round-trip so login/signup feel like they're hitting a
+// real service instead of resolving instantly — matched with a spinner on
+// the submit button.
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  const handlePick = (user) => {
+function DemoAccountsPanel({ onFill }) {
+  const users = useSelector(selectAllUsers);
+  const [open, setOpen] = useState(false);
+
+  const representative = ["learner", "trainer", "admin"]
+    .map((role) => users.find((u) => u.role === role && (u.status || "approved") === "approved"))
+    .filter(Boolean);
+
+  return (
+    <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-stone-600"
+      >
+        <span className="flex items-center gap-1.5">
+          <HelpCircle size={13} /> Try a demo account (any role)
+        </span>
+        <ChevronDown size={14} className={`transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="animate-fade-in space-y-1.5 px-3 pb-3">
+          {representative.map((u) => {
+            const meta = ROLE_META[u.role];
+            const Icon = meta.icon;
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => onFill(u.email, u.password)}
+                className="flex w-full items-center gap-2.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-500 hover:bg-brand-50/50"
+              >
+                <Icon size={14} style={{ color: meta.color }} className="shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-stone-800">{meta.label}</p>
+                  <p className="truncate text-[10px] text-stone-400">{u.email}</p>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500">
+                  <Copy size={10} /> Fill
+                </span>
+              </button>
+            );
+          })}
+          <p className="pt-1 text-[10px] text-stone-400">Fills the form below — you still need to hit Log in.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoginTab({ onLoggedIn }) {
+  const dispatch = useDispatch();
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+
+  const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!form.email.trim() || !form.password) {
+      setError("Enter both your email and password.");
+      return;
+    }
+    setLoading(true);
+    await delay(700);
+
+    // Look up straight from the live users list (not a memoized selector
+    // snapshot) so a just-created account can log in immediately.
+    const state = dispatch((_, getState) => getState());
+    const user = selectUserByEmail(state, form.email);
+
+    if (!user || user.password !== form.password) {
+      setLoading(false);
+      setError("Invalid email or password.");
+      return;
+    }
+
     dispatch(login(user));
+    dispatch(pushToast({ type: "success", message: `Welcome back, ${user.name.split(" ")[0]}.` }));
+    setLoading(false);
     onLoggedIn();
   };
 
   return (
-    <div className="space-y-6">
-      <p className="text-center text-xs text-stone-400">
-        This is a client demo — pick who you'd like to sign in as to preview that person's experience.
-      </p>
-      {groups.map((role) => {
-        const roleUsers = users.filter((u) => u.role === role && (u.status || "approved") === "approved");
-        if (roleUsers.length === 0) return null;
-        const meta = ROLE_META[role];
-        const Icon = meta.icon;
-        return (
-          <div key={role}>
-            <div className="mb-3 flex items-center gap-2">
-              <Icon size={14} style={{ color: meta.color }} />
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-500">{meta.label}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {roleUsers.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => handlePick(u)}
-                  className="flex items-center gap-3 rounded-xl border border-stone-200 p-3 text-left transition hover:border-brand-500 hover:bg-brand-50/50"
-                >
-                  <img src={u.avatarUrl} alt={u.name} className="h-10 w-10 shrink-0 rounded-full object-cover" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-stone-800">{u.name}</p>
-                    <p className="truncate text-[11px] text-stone-400">{u.department}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+    <div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            <AlertCircle size={14} className="shrink-0" /> {error}
           </div>
-        );
-      })}
+        )}
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-stone-600">Email</label>
+          <div className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 focus-within:border-brand-600">
+            <Mail size={14} className="shrink-0 text-stone-400" />
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              placeholder="you@afenet.org"
+              className="w-full bg-transparent text-sm outline-none"
+              autoComplete="username"
+            />
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-xs font-semibold text-stone-600">Password</label>
+            <button type="button" onClick={() => setShowForgot(true)} className="text-[11px] font-semibold text-brand-700 hover:underline">
+              Forgot password?
+            </button>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 focus-within:border-brand-600">
+            <Lock size={14} className="shrink-0 text-stone-400" />
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => update("password", e.target.value)}
+              placeholder="••••••••"
+              className="w-full bg-transparent text-sm outline-none"
+              autoComplete="current-password"
+            />
+          </div>
+        </div>
+
+        {showForgot && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+            There's no email service behind this demo yet — ask your workspace admin to reset your password from{" "}
+            <strong>Admin → Users</strong>.
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {loading && <Loader2 size={15} className="animate-spin" />}
+          {loading ? "Signing in..." : "Log in"}
+        </button>
+      </form>
+
+      <DemoAccountsPanel onFill={(email, password) => setForm({ email, password })} />
     </div>
   );
 }
 
 function SignupTab({ onSignedUp }) {
   const dispatch = useDispatch();
-  const [form, setForm] = useState({ name: "", email: "", department: "", role: "learner" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "", department: "", role: "learner" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [pendingNotice, setPendingNotice] = useState(false);
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
-    const action = dispatch(addUser({ name: form.name, department: form.department || "General", role: form.role }));
+    setError("");
+
+    if (!form.name.trim() || !form.email.trim()) {
+      setError("Name and email are required.");
+      return;
+    }
+    if (!form.email.includes("@")) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (form.password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+
+    setLoading(true);
+    await delay(700);
+
+    const state = dispatch((_, getState) => getState());
+    if (selectUserByEmail(state, form.email)) {
+      setLoading(false);
+      setError("An account with this email already exists.");
+      return;
+    }
+
+    const action = dispatch(
+      addUser({ name: form.name, email: form.email, password: form.password, department: form.department || "General", role: form.role })
+    );
     const newUser = action.payload;
     dispatch(login(newUser));
+    setLoading(false);
+
     if (newUser.role === "trainer" && newUser.status === "pending") {
       setPendingNotice(true);
       return;
     }
+    dispatch(pushToast({ type: "success", message: `Account created — welcome, ${newUser.name.split(" ")[0]}.` }));
     onSignedUp();
   };
 
@@ -102,6 +260,11 @@ function SignupTab({ onSignedUp }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          <AlertCircle size={14} className="shrink-0" /> {error}
+        </div>
+      )}
       <div>
         <label className="mb-1 block text-xs font-semibold text-stone-600">Full name</label>
         <input
@@ -123,6 +286,30 @@ function SignupTab({ onSignedUp }) {
           className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
         />
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-stone-600">Password</label>
+          <input
+            type="password"
+            value={form.password}
+            onChange={(e) => update("password", e.target.value)}
+            required
+            placeholder="At least 6 characters"
+            className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-stone-600">Confirm password</label>
+          <input
+            type="password"
+            value={form.confirmPassword}
+            onChange={(e) => update("confirmPassword", e.target.value)}
+            required
+            placeholder="Repeat password"
+            className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+          />
+        </div>
+      </div>
       <div>
         <label className="mb-1 block text-xs font-semibold text-stone-600">Department</label>
         <input
@@ -135,7 +322,7 @@ function SignupTab({ onSignedUp }) {
       <div>
         <label className="mb-1.5 block text-xs font-semibold text-stone-600">I'm signing up as a</label>
         <div className="flex gap-2">
-          {["learner", "trainer"].map((r) => (
+          {["learner", "trainer", "admin"].map((r) => (
             <button
               type="button"
               key={r}
@@ -151,11 +338,18 @@ function SignupTab({ onSignedUp }) {
         {form.role === "trainer" && (
           <p className="mt-1.5 text-[11px] text-amber-700">Trainer accounts need admin approval before you can run classes.</p>
         )}
+        {form.role === "admin" && (
+          <p className="mt-1.5 text-[11px] text-stone-400">Admin accounts get full org-wide access — use for internal staff.</p>
+        )}
       </div>
-      <button type="submit" className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800">
-        Create account
+      <button
+        type="submit"
+        disabled={loading}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {loading && <Loader2 size={15} className="animate-spin" />}
+        {loading ? "Creating account..." : "Create account"}
       </button>
-      <p className="text-center text-[10px] text-stone-400">Demo signup — no password/verification required.</p>
     </form>
   );
 }
@@ -170,7 +364,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-emerald-50 px-4 py-10">
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-700 text-white">
             <GraduationCap size={24} />
@@ -197,9 +391,7 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <div className={tab === "signup" ? "mx-auto max-w-sm" : ""}>
-            {tab === "login" ? <DemoLoginTab onLoggedIn={goNext} /> : <SignupTab onSignedUp={goNext} />}
-          </div>
+          {tab === "login" ? <LoginTab onLoggedIn={goNext} /> : <SignupTab onSignedUp={goNext} />}
         </div>
       </div>
     </div>

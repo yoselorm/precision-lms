@@ -20,6 +20,9 @@ import CertificatesPage from "./pages/CertificatesPage";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import ClassMaterialsPage from "./pages/ClassMaterialsPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
+import CourseQuizPage from "./pages/CourseQuizPage";
+import ClassQuizPage from "./pages/ClassQuizPage";
+import ToastContainer from "./components/ToastContainer";
 import { selectCurrentUser, selectIsAuthenticated } from "./store/slices/authSlice";
 
 function RequireRole({ allowed, children }) {
@@ -40,11 +43,12 @@ function AppShell() {
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
-      <main className="flex flex-1 overflow-hidden">
+      <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<HomeWithMenu onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/catalog" element={<CourseCatalog onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId" element={<CoursePlayer onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/course/:courseId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route
             path="/my-courses"
             element={
@@ -55,6 +59,7 @@ function AppShell() {
           />
           <Route path="/classes" element={<ClassesCatalog onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/classes/:classId" element={<ClassDetailPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/classes/:classId/quiz" element={<ClassQuizPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/certificates" element={<CertificatesPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route
             path="/classes/:classId/manage"
@@ -146,21 +151,32 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<PublicRoutes />} />
-      </Routes>
+      <>
+        <ToastContainer />
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<PublicRoutes />} />
+        </Routes>
+      </>
     );
   }
 
   if (currentUser?.role === "trainer" && (currentUser?.status === "pending" || currentUser?.status === "denied")) {
-    return <PendingApprovalPage />;
+    return (
+      <>
+        <ToastContainer />
+        <PendingApprovalPage />
+      </>
+    );
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/*" element={<AppShell />} />
-    </Routes>
+    <>
+      <ToastContainer />
+      <Routes>
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/*" element={<AppShell />} />
+      </Routes>
+    </>
   );
 }

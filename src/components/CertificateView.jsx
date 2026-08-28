@@ -3,8 +3,8 @@ import { Award, X, GraduationCap } from "lucide-react";
 
 export default function CertificateView({ learnerName, courseTitle, issuer, completedAt, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-2xl">
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/50 p-4">
+      <div className="relative w-full max-w-2xl animate-scale-in">
         <button onClick={onClose} className="absolute -top-10 right-0 text-white/80 hover:text-white">
           <X size={22} />
         </button>

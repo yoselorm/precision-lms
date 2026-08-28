@@ -14,23 +14,50 @@ const STATUS_STYLES = {
   completed: "bg-stone-100 text-stone-500 border-stone-200",
 };
 
+const HEADER_META = {
+  admin: { title: "Classes", subtitle: "Every scheduled cohort across the org." },
+  trainer: { title: "My Classes", subtitle: "The cohorts you're teaching." },
+  learner: { title: "My Classes", subtitle: "The cohorts you're enrolled in." },
+};
+
+const EMPTY_MESSAGE = {
+  admin: "No classes scheduled yet.",
+  trainer: "You're not teaching any classes yet.",
+  learner: "You're not enrolled in any classes yet.",
+};
+
 export default function ClassesCatalog({ onMenuClick }) {
   const navigate = useNavigate();
-  const classes = useSelector(selectAllClasses);
+  const allClasses = useSelector(selectAllClasses);
   const courses = useSelector(selectAllCourses);
   const users = useSelector(selectAllUsers);
   const currentUser = useSelector(selectCurrentUser);
 
+  // Admins see the whole org's cohorts; trainers only the ones they teach;
+  // learners only the ones they're enrolled in — there's no self-service way
+  // to join a class in this app, membership is always assigned, so a
+  // learner/trainer browsing everyone else's classes has no real use here.
+  const classes =
+    currentUser.role === "admin"
+      ? allClasses
+      : currentUser.role === "trainer"
+      ? allClasses.filter((c) => c.trainerId === currentUser.id)
+      : allClasses.filter((c) => c.memberIds.includes(currentUser.id));
+
+  const { title, subtitle } = HEADER_META[currentUser.role] ?? HEADER_META.admin;
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title="Classes" subtitle="Scheduled cohorts run by a trainer, built on top of a course." onMenuClick={onMenuClick} />
+      <Header title={title} subtitle={subtitle} onMenuClick={onMenuClick} />
 
       <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:p-8">
         {classes.map((cls) => {
           const course = courses.find((c) => c.id === cls.courseId);
           const trainer = users.find((u) => u.id === cls.trainerId);
           const members = users.filter((u) => cls.memberIds.includes(u.id));
-          const isMember = cls.memberIds.includes(currentUser.id);
+          // Membership highlighting only adds signal in the admin's org-wide
+          // list — trainers/learners are already looking at just their own.
+          const isMember = currentUser.role === "admin" && cls.memberIds.includes(currentUser.id);
 
           return (
             <div
@@ -92,7 +119,9 @@ export default function ClassesCatalog({ onMenuClick }) {
           );
         })}
 
-        {classes.length === 0 && <p className="text-sm text-stone-400">No classes scheduled yet.</p>}
+        {classes.length === 0 && (
+          <p className="text-sm text-stone-400">{EMPTY_MESSAGE[currentUser.role] ?? EMPTY_MESSAGE.admin}</p>
+        )}
       </div>
     </div>
   );

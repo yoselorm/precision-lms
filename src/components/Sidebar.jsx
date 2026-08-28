@@ -18,8 +18,10 @@ import {
   UserPlus,
   ClipboardList,
   X,
+  Eye,
+  LogIn,
 } from "lucide-react";
-import { selectCurrentUser, switchDemoUser, logout } from "../store/slices/authSlice";
+import { selectCurrentUser, selectRealUser, switchDemoUser, stopPreview, logout } from "../store/slices/authSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
 
 const baseLinks = [
@@ -41,10 +43,17 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
+  const realUser = useSelector(selectRealUser);
   const allUsers = useSelector(selectAllUsers);
   const [adminOpen, setAdminOpen] = useState(true);
+  const canPreview = realUser?.role === "admin" || (!realUser && currentUser.role === "admin");
 
-  const links = [...baseLinks];
+  // Trainers/learners only ever see their own classes on this page (no
+  // self-service way to join/browse others' cohorts), so the nav label
+  // reflects that; admins still get the org-wide "Classes" view.
+  const links = baseLinks.map((link) =>
+    link.to === "/classes" && currentUser.role !== "admin" ? { ...link, label: "My Classes" } : link
+  );
   if (currentUser.role === "learner") {
     links.splice(2, 0, { to: "/my-courses", label: "My Courses", icon: BookMarked });
   }
@@ -156,36 +165,60 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
           )}
         </nav>
 
-        {/* Demo-only role/user switcher */}
+        {/* Admin-only "preview as" impersonation, so admins can sanity-check
+            other roles' views without every signed-in user being able to
+            hop into anyone else's account. realUser is set while previewing
+            so there's always a way back to the admin's own identity. */}
         <div className="relative border-t border-white/10 bg-black/10 p-3">
-          {!collapsed && (
-            <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-emerald-200/60">Demo: viewing as</p>
-          )}
-          {!collapsed ? (
-            <div className="relative">
-              <select
-                value={currentUser.id}
-                onChange={(e) => {
-                  const user = allUsers.find((u) => u.id === e.target.value);
-                  if (user) dispatch(switchDemoUser(user));
-                }}
-                className="w-full appearance-none rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none cursor-pointer backdrop-blur-sm focus:border-white/40 [&>option]:text-stone-800"
-              >
-                {allUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} — {u.role}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-2.5 text-emerald-100/70" />
+          {realUser && !collapsed && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-amber-300/30 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-semibold text-amber-200">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Eye size={11} className="shrink-0" />
+                <span className="truncate">Previewing as {currentUser.name}</span>
+              </span>
+              <button onClick={() => dispatch(stopPreview())} className="shrink-0 underline hover:text-white">
+                Exit
+              </button>
             </div>
-          ) : (
-            <img
-              src={currentUser.avatarUrl}
-              alt={currentUser.name}
-              className="mx-auto h-9 w-9 rounded-full object-cover ring-2 ring-white/25"
-              title={currentUser.name}
-            />
+          )}
+          {realUser && collapsed && (
+            <button onClick={() => dispatch(stopPreview())} title="Exit preview" className="mx-auto mb-2 flex text-amber-300 hover:text-white">
+              <LogIn size={16} />
+            </button>
+          )}
+
+          {canPreview && (
+            <>
+              {!collapsed && (
+                <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-emerald-200/60">Preview as</p>
+              )}
+              {!collapsed ? (
+                <div className="relative mb-2">
+                  <select
+                    value={currentUser.id}
+                    onChange={(e) => {
+                      const user = allUsers.find((u) => u.id === e.target.value);
+                      if (user) dispatch(switchDemoUser(user));
+                    }}
+                    className="w-full appearance-none rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none cursor-pointer backdrop-blur-sm focus:border-white/40 [&>option]:text-stone-800"
+                  >
+                    {allUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} — {u.role}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-2.5 text-emerald-100/70" />
+                </div>
+              ) : (
+                <img
+                  src={currentUser.avatarUrl}
+                  alt={currentUser.name}
+                  className="mx-auto mb-2 h-9 w-9 rounded-full object-cover ring-2 ring-white/25"
+                  title={currentUser.name}
+                />
+              )}
+            </>
           )}
 
           <button

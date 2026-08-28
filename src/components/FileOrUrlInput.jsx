@@ -67,6 +67,11 @@ export default function FileOrUrlInput({ value, onChange, accept, kind = "file",
               </button>
             </span>
           )}
+          {fileName && kind === "video" && (
+            <p className="basis-full text-[10px] text-amber-600">
+              Uploaded files live in this browser tab only and won't survive a refresh — paste a URL instead for something that sticks around.
+            </p>
+          )}
         </div>
       ) : (
         <input

@@ -26,6 +26,7 @@ const enrollmentsSlice = createSlice({
             progress: 0,
             completedModuleIds: [],
             quizScore: null,
+            quizAttempts: [],
             dueDate: dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
           },
         };
@@ -45,10 +46,16 @@ const enrollmentsSlice = createSlice({
       }
     },
     submitQuizScore(state, action) {
-      const { userId, courseId, score } = action.payload;
+      const { userId, courseId, score, passingScore } = action.payload;
       const enrollment = state.enrollments.find((e) => e.userId === userId && e.courseId === courseId);
       if (!enrollment) return;
       enrollment.quizScore = score;
+      if (!enrollment.quizAttempts) enrollment.quizAttempts = [];
+      enrollment.quizAttempts.push({
+        score,
+        passed: score >= (passingScore ?? 0),
+        submittedAt: new Date().toISOString(),
+      });
     },
   },
 });

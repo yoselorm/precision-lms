@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Plus, X, Check, Ban, Clock } from "lucide-react";
 import Header from "../components/Header";
 import { selectAllUsers, addUser, setUserStatus } from "../store/slices/usersSlice";
+import { pushToast } from "../store/slices/uiSlice";
 
 const ROLES = ["learner", "admin", "trainer"];
 
@@ -38,12 +39,13 @@ function UserFormModal({ onClose }) {
     // Admin-created accounts are approved immediately, regardless of role —
     // the approval step only applies to trainers who self-signed-up.
     dispatch(addUser({ ...form, status: "approved" }));
+    dispatch(pushToast({ type: "success", message: `${form.name} was added as a ${form.role}.` }));
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl bg-white p-6">
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Add a user</h2>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
@@ -114,6 +116,16 @@ export default function AdminUsers({ onMenuClick }) {
     return users.filter((u) => u.role === filter);
   }, [users, filter]);
 
+  const handleStatusChange = (user, status) => {
+    dispatch(setUserStatus({ userId: user.id, status }));
+    dispatch(
+      pushToast({
+        type: status === "approved" ? "success" : "info",
+        message: `${user.name} was ${status === "approved" ? "approved" : "denied"}.`,
+      })
+    );
+  };
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
       <Header title="Users" subtitle={`${users.length} people in the system`} onMenuClick={onMenuClick} />
@@ -178,13 +190,13 @@ export default function AdminUsers({ onMenuClick }) {
                       {u.role === "trainer" && status === "pending" && (
                         <div className="flex justify-end gap-1.5">
                           <button
-                            onClick={() => dispatch(setUserStatus({ userId: u.id, status: "approved" }))}
+                            onClick={() => handleStatusChange(u, "approved")}
                             className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
                           >
                             <Check size={11} /> Approve
                           </button>
                           <button
-                            onClick={() => dispatch(setUserStatus({ userId: u.id, status: "denied" }))}
+                            onClick={() => handleStatusChange(u, "denied")}
                             className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
                           >
                             <Ban size={11} /> Deny
@@ -193,7 +205,7 @@ export default function AdminUsers({ onMenuClick }) {
                       )}
                       {u.role === "trainer" && status === "denied" && (
                         <button
-                          onClick={() => dispatch(setUserStatus({ userId: u.id, status: "approved" }))}
+                          onClick={() => handleStatusChange(u, "approved")}
                           className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
                         >
                           <Check size={11} /> Approve anyway

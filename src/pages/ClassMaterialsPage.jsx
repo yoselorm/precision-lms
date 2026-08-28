@@ -5,10 +5,12 @@ import { ArrowLeft, PlayCircle, FileText, HelpCircle, Users, CalendarDays, Repea
 import Header from "../components/Header";
 import ThumbnailPicker from "../components/ThumbnailPicker";
 import TopicListEditor from "../components/TopicListEditor";
-import { selectClassById, setClassCourse } from "../store/slices/classesSlice";
-import { selectAllCourses, selectCourseById, addModuleToCourse, createBlankCourse } from "../store/slices/coursesSlice";
+import QuizManageModal from "../components/QuizManageModal";
+import { selectClassById, setClassCourse, setClassQuiz } from "../store/slices/classesSlice";
+import { selectAllCourses, selectCourseById, addModuleToCourse, createBlankCourse, setCourseQuiz } from "../store/slices/coursesSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
+import { pushToast } from "../store/slices/uiSlice";
 
 const MODULE_ICONS = { video: PlayCircle, reading: FileText, quiz: HelpCircle };
 
@@ -34,8 +36,8 @@ function SwapCourseModal({ classId, currentCourseId, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl bg-white p-6">
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
         <h2 className="mb-4 text-base font-bold text-stone-900">Attach a course to this class</h2>
 
         <div className="mb-4 flex gap-2">
@@ -104,6 +106,8 @@ export default function ClassMaterialsPage({ onMenuClick }) {
   const course = useSelector((state) => (cls ? selectCourseById(state, cls.courseId) : null));
   const users = useSelector(selectAllUsers);
   const [showSwap, setShowSwap] = useState(false);
+  const [showCourseQuiz, setShowCourseQuiz] = useState(false);
+  const [showClassQuiz, setShowClassQuiz] = useState(false);
 
   if (!cls) {
     return (
@@ -197,6 +201,60 @@ export default function ClassMaterialsPage({ onMenuClick }) {
               </h3>
               <TopicListEditor topics={[]} onChange={handleAddTopics} />
             </div>
+
+            <div className="rounded-2xl border border-stone-200 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="flex items-center gap-1.5 text-sm font-bold text-stone-800">
+                    <HelpCircle size={15} /> Course quiz (shared)
+                  </h3>
+                  <p className="mt-0.5 text-xs text-stone-400">
+                    {course.quiz?.questions?.length
+                      ? `${course.quiz.questions.length} question${course.quiz.questions.length > 1 ? "s" : ""}${
+                          course.quiz.timeLimitMins ? ` · ${course.quiz.timeLimitMins} min limit` : ""
+                        }`
+                      : "No questions yet"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCourseQuiz(true)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                >
+                  <HelpCircle size={13} /> Manage quiz
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-stone-400">
+                Lives on the course itself and is taken from inside the course player — editing it here updates it
+                for any other class built on the same course too.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-stone-200 bg-white p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="flex items-center gap-1.5 text-sm font-bold text-stone-800">
+                    <HelpCircle size={15} /> Class quiz (this cohort only)
+                  </h3>
+                  <p className="mt-0.5 text-xs text-stone-400">
+                    {cls.quiz?.questions?.length
+                      ? `${cls.quiz.questions.length} question${cls.quiz.questions.length > 1 ? "s" : ""}${
+                          cls.quiz.timeLimitMins ? ` · ${cls.quiz.timeLimitMins} min limit` : ""
+                        }`
+                      : "No questions yet"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowClassQuiz(true)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                >
+                  <HelpCircle size={13} /> Manage quiz
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-stone-400">
+                A separate assessment just for students in this class — taken from the class page, not the course
+                player. Other classes on the same course aren't affected.
+              </p>
+            </div>
           </>
         ) : (
           <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-400">
@@ -206,6 +264,30 @@ export default function ClassMaterialsPage({ onMenuClick }) {
       </div>
 
       {showSwap && <SwapCourseModal classId={cls.id} currentCourseId={cls.courseId} onClose={() => setShowSwap(false)} />}
+      {showCourseQuiz && course && (
+        <QuizManageModal
+          title="Manage course quiz"
+          subtitle={course.title}
+          quiz={course.quiz}
+          onSave={(payload) => {
+            dispatch(setCourseQuiz({ courseId: course.id, ...payload }));
+            dispatch(pushToast({ type: "success", message: `Course quiz saved for "${course.title}".` }));
+          }}
+          onClose={() => setShowCourseQuiz(false)}
+        />
+      )}
+      {showClassQuiz && (
+        <QuizManageModal
+          title="Manage class quiz"
+          subtitle={cls.title}
+          quiz={cls.quiz}
+          onSave={(payload) => {
+            dispatch(setClassQuiz({ classId: cls.id, ...payload }));
+            dispatch(pushToast({ type: "success", message: `Class quiz saved for "${cls.title}".` }));
+          }}
+          onClose={() => setShowClassQuiz(false)}
+        />
+      )}
     </div>
   );
 }

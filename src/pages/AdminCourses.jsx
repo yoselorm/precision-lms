@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Plus, X, Layers, Tag, Award, Trophy } from "lucide-react";
+import { Plus, X, Layers, Tag, Award, Trophy, HelpCircle } from "lucide-react";
 import Header from "../components/Header";
 import ThumbnailPicker from "../components/ThumbnailPicker";
 import TopicListEditor from "../components/TopicListEditor";
-import { selectAllCourses, addCourse } from "../store/slices/coursesSlice";
+import QuizBuilder from "../components/QuizBuilder";
+import QuizManageModal from "../components/QuizManageModal";
+import { selectAllCourses, addCourse, setCourseQuiz } from "../store/slices/coursesSlice";
+import { pushToast } from "../store/slices/uiSlice";
 
 const CATEGORIES = ["Compliance", "Leadership", "Onboarding", "Technical Skills", "Sales", "Marketing"];
 
@@ -23,19 +26,23 @@ function CourseFormModal({ onClose }) {
     capstoneInstructions: "",
   });
   const [topics, setTopics] = useState([]);
+  const [passingScore, setPassingScore] = useState(70);
+  const [timeLimitMins, setTimeLimitMins] = useState("");
+  const [quizQuestions, setQuizQuestions] = useState([]);
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    dispatch(addCourse({ ...form, modules: topics }));
+    dispatch(addCourse({ ...form, modules: topics, quiz: { passingScore, timeLimitMins, questions: quizQuestions } }));
+    dispatch(pushToast({ type: "success", message: `"${form.title}" was created.` }));
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6">
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-xl animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Add a new course</h2>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
@@ -96,6 +103,20 @@ function CourseFormModal({ onClose }) {
           </div>
 
           <TopicListEditor topics={topics} onChange={setTopics} />
+
+          <div className="rounded-lg border border-stone-200 p-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+              <HelpCircle size={13} /> Knowledge check quiz (optional — can add later)
+            </p>
+            <QuizBuilder
+              passingScore={passingScore}
+              onPassingScoreChange={setPassingScore}
+              timeLimitMins={timeLimitMins}
+              onTimeLimitChange={setTimeLimitMins}
+              questions={quizQuestions}
+              onQuestionsChange={setQuizQuestions}
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -172,8 +193,10 @@ function CourseFormModal({ onClose }) {
 }
 
 export default function AdminCourses({ onMenuClick }) {
+  const dispatch = useDispatch();
   const courses = useSelector(selectAllCourses);
   const [showForm, setShowForm] = useState(false);
+  const [managingQuizFor, setManagingQuizFor] = useState(null);
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
@@ -201,7 +224,9 @@ export default function AdminCourses({ onMenuClick }) {
                 <th className="px-4 py-3">
                   <Layers size={12} className="inline" /> Topics
                 </th>
+                <th className="px-4 py-3">Quiz</th>
                 <th className="px-4 py-3">Students</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
@@ -229,7 +254,18 @@ export default function AdminCourses({ onMenuClick }) {
                   <td className="px-4 py-3 text-stone-500">{c.certificate ? "Yes" : "—"}</td>
                   <td className="px-4 py-3 text-stone-500">{c.capstone ? "Yes" : "—"}</td>
                   <td className="px-4 py-3 text-stone-500">{c.modules.length}</td>
+                  <td className="px-4 py-3 text-stone-500">
+                    {c.quiz?.questions?.length ? `${c.quiz.questions.length} question${c.quiz.questions.length > 1 ? "s" : ""}` : "—"}
+                  </td>
                   <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => setManagingQuizFor(c)}
+                      className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                    >
+                      <HelpCircle size={11} /> Manage quiz
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -238,6 +274,18 @@ export default function AdminCourses({ onMenuClick }) {
       </div>
 
       {showForm && <CourseFormModal onClose={() => setShowForm(false)} />}
+      {managingQuizFor && (
+        <QuizManageModal
+          title="Manage quiz"
+          subtitle={managingQuizFor.title}
+          quiz={managingQuizFor.quiz}
+          onSave={(payload) => {
+            dispatch(setCourseQuiz({ courseId: managingQuizFor.id, ...payload }));
+            dispatch(pushToast({ type: "success", message: `Quiz saved for "${managingQuizFor.title}".` }));
+          }}
+          onClose={() => setManagingQuizFor(null)}
+        />
+      )}
     </div>
   );
 }

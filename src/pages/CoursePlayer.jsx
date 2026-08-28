@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { CheckCircle2, Circle, PlayCircle, FileText, HelpCircle, ArrowLeft, Award, Lock, Tag, Trophy } from "lucide-react";
+import { CheckCircle2, Circle, PlayCircle, FileText, HelpCircle, ArrowLeft, Lock, Tag, Trophy } from "lucide-react";
 import { selectCourseById } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectEnrollment, completeModule, submitQuizScore, enrollUser } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment, completeModule, enrollUser } from "../store/slices/enrollmentsSlice";
+import { pushToast } from "../store/slices/uiSlice";
 import ProgressBar from "../components/ProgressBar";
 import SubmissionUpload from "../components/SubmissionUpload";
+import QuizIntroCard from "../components/QuizIntroCard";
+import ModuleComments from "../components/ModuleComments";
 
 const MODULE_ICONS = { video: PlayCircle, reading: FileText, quiz: HelpCircle };
 
@@ -20,10 +23,17 @@ export default function CoursePlayer({ onMenuClick }) {
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
 
   const [activeModuleId, setActiveModuleId] = useState(course?.modules[0]?.id);
-  const [quizAnswers, setQuizAnswers] = useState({});
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
 
   const activeModule = useMemo(() => course?.modules.find((m) => m.id === activeModuleId), [course, activeModuleId]);
+
+  // Free courses have no paywall gate to enroll through — auto-enroll on
+  // first visit so progress/quiz-score tracking (which needs an enrollment
+  // record to write to) works the same way it does for paid courses.
+  useEffect(() => {
+    if (course && currentUser && course.price === 0 && !enrollment) {
+      dispatch(enrollUser({ userId: currentUser.id, courseId: course.id }));
+    }
+  }, [course, currentUser, enrollment, dispatch]);
 
   if (!course) {
     return (
@@ -43,31 +53,47 @@ export default function CoursePlayer({ onMenuClick }) {
   const needsPurchase = course.price > 0 && !enrollment && currentUser.role !== "admin";
 
   if (needsPurchase) {
-    return <PurchaseGate course={course} onEnroll={() => dispatch(enrollUser({ userId: currentUser.id, courseId: course.id }))} onBack={() => navigate("/catalog")} />;
+    return (
+      <PurchaseGate
+        course={course}
+        onEnroll={() => {
+          dispatch(enrollUser({ userId: currentUser.id, courseId: course.id }));
+          dispatch(pushToast({ type: "success", message: `Enrolled in "${course.title}".` }));
+        }}
+        onBack={() => navigate("/catalog")}
+      />
+    );
   }
 
   const completedIds = enrollment?.completedModuleIds ?? [];
   const isModuleComplete = (id) => completedIds.includes(id);
 
-  const markModuleDone = () => {
-    dispatch(completeModule({ userId: currentUser.id, courseId: course.id, moduleId: activeModule.id, totalModules: course.modules.length }));
+  // Older/seeded courses author their quiz as a literal `type: "quiz"` entry
+  // inside `modules`. Courses authored through QuizBuilder don't have one —
+  // the quiz lives only in `course.quiz` — so fall back to a synthetic
+  // pseudo-module (same trick already used for the capstone) whenever there
+  // are quiz questions but no explicit module for them. Either way there's
+  // exactly one reachable "Knowledge check" entry.
+  const legacyQuizModule = course.modules.find((m) => m.type === "quiz");
+  const hasQuiz = (course.quiz?.questions?.length ?? 0) > 0;
+  const quizModuleId = legacyQuizModule?.id ?? "__quiz__";
+  const totalCompletable = course.modules.length + (hasQuiz && !legacyQuizModule ? 1 : 0);
+
+  const markModuleDone = (moduleId) => {
+    dispatch(completeModule({ userId: currentUser.id, courseId: course.id, moduleId, totalModules: totalCompletable }));
   };
 
-  const handleQuizSubmit = () => {
-    const total = course.quiz.questions.length;
-    const correct = course.quiz.questions.filter((q) => quizAnswers[q.id] === q.answerIndex).length;
-    const score = Math.round((correct / total) * 100);
-    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, score }));
-    setQuizSubmitted(true);
-    if (!isModuleComplete(activeModule.id)) {
-      markModuleDone();
-    }
+  const handleMarkComplete = () => {
+    markModuleDone(activeModule.id);
+    dispatch(pushToast({ type: "success", message: `"${activeModule.title}" marked as complete.` }));
   };
+
+  const switchModule = (id) => setActiveModuleId(id);
 
   return (
-    <div className="flex h-full flex-1 flex-col overflow-hidden bg-stone-50 lg:flex-row">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-stone-50 lg:flex-row">
       {/* Module list */}
-      <aside className="flex max-h-64 w-full shrink-0 flex-col overflow-y-auto border-b border-stone-200 bg-white p-4 lg:h-full lg:max-h-none lg:w-80 lg:border-b-0 lg:border-r">
+      <aside className="flex max-h-64 w-full shrink-0 flex-col overflow-y-auto border-b border-stone-200 bg-white p-4 lg:h-full lg:max-h-none lg:min-h-0 lg:w-80 lg:border-b-0 lg:border-r">
         <button onClick={() => navigate(-1)} className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-stone-700">
           <ArrowLeft size={14} /> Back
         </button>
@@ -84,11 +110,7 @@ export default function CoursePlayer({ onMenuClick }) {
             return (
               <button
                 key={mod.id}
-                onClick={() => {
-                  setActiveModuleId(mod.id);
-                  setQuizSubmitted(false);
-                  setQuizAnswers({});
-                }}
+                onClick={() => switchModule(mod.id)}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
                   active ? "bg-brand-50 text-brand-800 font-semibold" : "text-stone-600 hover:bg-stone-50"
                 }`}
@@ -101,13 +123,26 @@ export default function CoursePlayer({ onMenuClick }) {
             );
           })}
 
+          {hasQuiz && !legacyQuizModule && (
+            <button
+              onClick={() => switchModule(quizModuleId)}
+              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
+                activeModuleId === quizModuleId ? "bg-brand-50 text-brand-800 font-semibold" : "text-stone-600 hover:bg-stone-50"
+              }`}
+            >
+              {isModuleComplete(quizModuleId) ? (
+                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+              ) : (
+                <Circle size={15} className="shrink-0 text-stone-300" />
+              )}
+              <HelpCircle size={13} className="shrink-0 text-stone-400" />
+              <span className="flex-1">Knowledge check</span>
+            </button>
+          )}
+
           {course.capstone && (
             <button
-              onClick={() => {
-                setActiveModuleId("__capstone__");
-                setQuizSubmitted(false);
-                setQuizAnswers({});
-              }}
+              onClick={() => switchModule("__capstone__")}
               className={`flex w-full items-center gap-2.5 rounded-lg border border-dashed border-amber-300 px-3 py-2.5 text-left text-xs transition ${
                 activeModuleId === "__capstone__" ? "bg-amber-50 text-amber-800 font-semibold" : "text-stone-600 hover:bg-amber-50/50"
               }`}
@@ -120,7 +155,7 @@ export default function CoursePlayer({ onMenuClick }) {
       </aside>
 
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-8">
         {activeModuleId === "__capstone__" && course.capstone && (
           <div className="mx-auto max-w-2xl space-y-5">
             <div>
@@ -136,7 +171,7 @@ export default function CoursePlayer({ onMenuClick }) {
           </div>
         )}
 
-        {activeModuleId !== "__capstone__" && activeModule?.type !== "quiz" && (
+        {activeModuleId !== "__capstone__" && activeModuleId !== quizModuleId && (
           <div className="mx-auto max-w-2xl space-y-5">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
@@ -167,98 +202,27 @@ export default function CoursePlayer({ onMenuClick }) {
             )}
 
             <button
-              onClick={markModuleDone}
+              onClick={handleMarkComplete}
               disabled={isModuleComplete(activeModule?.id)}
               className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isModuleComplete(activeModule?.id) ? "Completed" : "Mark as complete"}
             </button>
+
+            {activeModule && <ModuleComments courseId={course.id} moduleId={activeModule.id} />}
           </div>
         )}
 
-        {activeModule?.type === "quiz" && (
-          <div className="mx-auto max-w-2xl space-y-5">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Knowledge check</span>
-              <h1 className="text-xl font-bold text-stone-900">{activeModule.title}</h1>
-              <p className="text-xs text-stone-400">Passing score: {course.quiz.passingScore}%</p>
-            </div>
-
-            {!quizSubmitted ? (
-              <div className="space-y-5">
-                {course.quiz.questions.map((q, qi) => (
-                  <div key={q.id} className="rounded-xl border border-stone-200 bg-white p-4">
-                    <p className="mb-3 text-sm font-semibold text-stone-800">
-                      {qi + 1}. {q.prompt}
-                    </p>
-                    <div className="space-y-2">
-                      {q.options.map((opt, oi) => (
-                        <label
-                          key={oi}
-                          className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition ${
-                            quizAnswers[q.id] === oi ? "border-brand-600 bg-brand-50" : "border-stone-200 hover:bg-stone-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={q.id}
-                            checked={quizAnswers[q.id] === oi}
-                            onChange={() => setQuizAnswers((prev) => ({ ...prev, [q.id]: oi }))}
-                            className="text-brand-700"
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={handleQuizSubmit}
-                  disabled={Object.keys(quizAnswers).length < course.quiz.questions.length}
-                  className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Submit answers
-                </button>
-              </div>
-            ) : (
-              <QuizResult
-                score={enrollment?.quizScore ?? 0}
-                passingScore={course.quiz.passingScore}
-                onBackToCatalog={() => navigate("/catalog")}
-                hasCertificate={!!course.certificate}
-                onViewCertificate={() => navigate("/certificates")}
-              />
-            )}
+        {activeModuleId === quizModuleId && hasQuiz && (
+          <div className="mx-auto max-w-2xl">
+            <QuizIntroCard
+              quiz={course.quiz}
+              attempts={enrollment?.quizAttempts}
+              heading="Knowledge check"
+              subheading={legacyQuizModule?.title || "Knowledge check"}
+              onStart={() => navigate(`/course/${course.id}/quiz`)}
+            />
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function QuizResult({ score, passingScore, onBackToCatalog, hasCertificate, onViewCertificate }) {
-  const passed = score >= passingScore;
-  return (
-    <div className="rounded-xl border border-stone-200 bg-white p-6 text-center sm:p-8">
-      <div
-        className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
-          passed ? "bg-emerald-50" : "bg-rose-50"
-        }`}
-      >
-        <Award size={32} className={passed ? "text-emerald-600" : "text-rose-500"} />
-      </div>
-      <h2 className="text-lg font-bold text-stone-900">{passed ? "You passed!" : "Not quite there"}</h2>
-      <p className="mb-4 text-sm text-stone-500">
-        You scored <strong>{score}%</strong> — passing score is {passingScore}%.
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <button onClick={onBackToCatalog} className="rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50">
-          Back to catalog
-        </button>
-        {passed && hasCertificate && (
-          <button onClick={onViewCertificate} className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800">
-            View certificate
-          </button>
         )}
       </div>
     </div>

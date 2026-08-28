@@ -16,7 +16,7 @@ const coursesSlice = createSlice({
       reducer(state, action) {
         state.courses.push(action.payload);
       },
-      prepare({ title, category, mandatory, durationMins, price, description, certificateTitle, thumbnailImage, modules, capstoneTitle, capstoneInstructions }) {
+      prepare({ title, category, mandatory, durationMins, price, description, certificateTitle, thumbnailImage, modules, capstoneTitle, capstoneInstructions, quiz }) {
         const id = `c-${nanoid(6)}`;
         const builtModules = (modules && modules.length > 0 ? modules : [{ title: "Introduction", type: "video", durationMins: 10 }]).map(
           (m, i) => ({
@@ -44,7 +44,7 @@ const coursesSlice = createSlice({
             capstone: capstoneTitle ? { title: capstoneTitle, instructions: capstoneInstructions || "" } : null,
             description: description || "",
             modules: builtModules,
-            quiz: { passingScore: 70, questions: [] },
+            quiz: quiz && quiz.questions?.length ? quiz : { passingScore: quiz?.passingScore || 70, questions: [] },
           },
         };
       },
@@ -115,10 +115,23 @@ const coursesSlice = createSlice({
       if (!course) return;
       course.capstone = title ? { title, instructions: instructions || "" } : null;
     },
+    // Admin/trainer authors or edits a course's quiz via QuizBuilder —
+    // replaces the quiz wholesale since the builder always submits the full
+    // working set of questions.
+    setCourseQuiz(state, action) {
+      const { courseId, passingScore, timeLimitMins, questions } = action.payload;
+      const course = state.courses.find((c) => c.id === courseId);
+      if (!course) return;
+      course.quiz = {
+        passingScore: Number(passingScore) || 70,
+        timeLimitMins: Number(timeLimitMins) || null,
+        questions: questions || [],
+      };
+    },
   },
 });
 
-export const { addCourse, createBlankCourse, addModuleToCourse, setCourseCapstone } = coursesSlice.actions;
+export const { addCourse, createBlankCourse, addModuleToCourse, setCourseCapstone, setCourseQuiz } = coursesSlice.actions;
 export default coursesSlice.reducer;
 
 export const selectAllCourses = (state) => state.courses.courses;
