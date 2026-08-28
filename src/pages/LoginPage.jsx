@@ -7,17 +7,19 @@ import {
   BookOpen,
   Clock,
   ArrowRight,
-  Mail,
-  Lock,
   Loader2,
   AlertCircle,
   ChevronDown,
   Copy,
   HelpCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { login } from "../store/slices/authSlice";
 import { selectAllUsers, addUser, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
+
+const HERO_IMAGE = "https://picsum.photos/seed/afenet-study-hero/1400/1867";
 
 const ROLE_META = {
   learner: { label: "Learner", icon: BookOpen, color: "#16a34a" },
@@ -25,11 +27,58 @@ const ROLE_META = {
   trainer: { label: "Trainer", icon: GraduationCap, color: "#7c3aed" },
 };
 
-// Simulates a network round-trip so login/signup feel like they're hitting a
-// real service instead of resolving instantly — matched with a spinner on
-// the submit button.
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function Field({ label, action, children }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-semibold text-stone-700">{label}</label>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FilledInput(props) {
+  return (
+    <input
+      {...props}
+      className="w-full rounded-lg border-0 bg-stone-100 px-3.5 py-2.5 text-xs sm:text-sm text-stone-900 outline-none ring-1 ring-transparent transition placeholder:text-stone-400 focus:bg-white focus:ring-2 focus:ring-brand-600"
+    />
+  );
+}
+
+function PasswordField({ label, value, onChange, placeholder, autoComplete, action }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <Field
+      label={label}
+      action={
+        action ?? (
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-brand-700 hover:text-brand-800"
+          >
+            {visible ? <EyeOff size={12} /> : <Eye size={12} />}
+            {visible ? "Hide" : "Show"}
+          </button>
+        )
+      }
+    >
+      <FilledInput
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+      />
+    </Field>
+  );
 }
 
 function DemoAccountsPanel({ onFill }) {
@@ -41,19 +90,19 @@ function DemoAccountsPanel({ onFill }) {
     .filter(Boolean);
 
   return (
-    <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50">
+    <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-stone-600"
+        className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold text-stone-600 transition hover:text-stone-900"
       >
         <span className="flex items-center gap-1.5">
-          <HelpCircle size={13} /> Try a demo account (any role)
+          <HelpCircle size={13} className="text-brand-700" /> Try a demo account
         </span>
-        <ChevronDown size={14} className={`transition ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={13} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="animate-fade-in space-y-1.5 px-3 pb-3">
+        <div className="space-y-1.5 px-3 pb-3 pt-1">
           {representative.map((u) => {
             const meta = ROLE_META[u.role];
             const Icon = meta.icon;
@@ -62,20 +111,19 @@ function DemoAccountsPanel({ onFill }) {
                 key={u.id}
                 type="button"
                 onClick={() => onFill(u.email, u.password)}
-                className="flex w-full items-center gap-2.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-xs transition hover:border-brand-500 hover:bg-brand-50/50"
+                className="flex w-full items-center gap-2 rounded-lg border border-stone-200/80 bg-white px-2.5 py-1.5 text-left text-xs transition hover:border-brand-500 hover:bg-brand-50/50"
               >
-                <Icon size={14} style={{ color: meta.color }} className="shrink-0" />
+                <Icon size={13} style={{ color: meta.color }} className="shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-stone-800">{meta.label}</p>
+                  <p className="truncate text-xs font-semibold text-stone-800">{meta.label}</p>
                   <p className="truncate text-[10px] text-stone-400">{u.email}</p>
                 </div>
-                <span className="flex shrink-0 items-center gap-1 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-500">
-                  <Copy size={10} /> Fill
+                <span className="flex shrink-0 items-center gap-1 rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-semibold text-stone-600">
+                  <Copy size={9} /> Fill
                 </span>
               </button>
             );
           })}
-          <p className="pt-1 text-[10px] text-stone-400">Fills the form below — you still need to hit Log in.</p>
         </div>
       )}
     </div>
@@ -99,10 +147,8 @@ function LoginTab({ onLoggedIn }) {
       return;
     }
     setLoading(true);
-    await delay(700);
+    await delay(600);
 
-    // Look up straight from the live users list (not a memoized selector
-    // snapshot) so a just-created account can log in immediately.
     const state = dispatch((_, getState) => getState());
     const user = selectUserByEmail(state, form.email);
 
@@ -120,60 +166,53 @@ function LoginTab({ onLoggedIn }) {
 
   return (
     <div>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
         {error && (
           <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
             <AlertCircle size={14} className="shrink-0" /> {error}
           </div>
         )}
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-stone-600">Email</label>
-          <div className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 focus-within:border-brand-600">
-            <Mail size={14} className="shrink-0 text-stone-400" />
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => update("email", e.target.value)}
-              placeholder="you@afenet.org"
-              className="w-full bg-transparent text-sm outline-none"
-              autoComplete="username"
-            />
-          </div>
-        </div>
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <label className="block text-xs font-semibold text-stone-600">Password</label>
-            <button type="button" onClick={() => setShowForgot(true)} className="text-[11px] font-semibold text-brand-700 hover:underline">
-              Forgot password?
-            </button>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 focus-within:border-brand-600">
-            <Lock size={14} className="shrink-0 text-stone-400" />
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => update("password", e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-transparent text-sm outline-none"
-              autoComplete="current-password"
-            />
-          </div>
-        </div>
+
+        <Field label="Email Address">
+          <FilledInput
+            type="email"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+            placeholder="Enter your email..."
+            autoComplete="username"
+            required
+          />
+        </Field>
+
+        <PasswordField
+          label="Password"
+          value={form.password}
+          onChange={(e) => update("password", e.target.value)}
+          placeholder="Enter your password..."
+          autoComplete="current-password"
+        />
 
         {showForgot && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-            There's no email service behind this demo yet — ask your workspace admin to reset your password from{" "}
-            <strong>Admin → Users</strong>.
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+            Ask your workspace administrator to reset your credentials under <strong>Admin → Users</strong>.
           </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {loading && <Loader2 size={15} className="animate-spin" />}
-          {loading ? "Signing in..." : "Log in"}
+          {loading && <Loader2 size={14} className="animate-spin" />}
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowForgot((v) => !v)}
+          className="block w-full text-center text-xs font-semibold text-brand-700 hover:text-brand-800 hover:underline"
+        >
+          Forgot password?
         </button>
       </form>
 
@@ -184,7 +223,14 @@ function LoginTab({ onLoggedIn }) {
 
 function SignupTab({ onSignedUp }) {
   const dispatch = useDispatch();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "", department: "", role: "learner" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    department: "",
+    role: "learner",
+  });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingNotice, setPendingNotice] = useState(false);
@@ -213,7 +259,7 @@ function SignupTab({ onSignedUp }) {
     }
 
     setLoading(true);
-    await delay(700);
+    await delay(600);
 
     const state = dispatch((_, getState) => getState());
     if (selectUserByEmail(state, form.email)) {
@@ -223,7 +269,13 @@ function SignupTab({ onSignedUp }) {
     }
 
     const action = dispatch(
-      addUser({ name: form.name, email: form.email, password: form.password, department: form.department || "General", role: form.role })
+      addUser({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        department: form.department || "General",
+        role: form.role,
+      })
     );
     const newUser = action.payload;
     dispatch(login(newUser));
@@ -239,116 +291,98 @@ function SignupTab({ onSignedUp }) {
 
   if (pendingNotice) {
     return (
-      <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
-          <Clock size={22} className="text-amber-600" />
+      <div className="flex flex-col items-center gap-3 py-4 text-center">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50">
+          <Clock size={20} className="text-amber-600" />
         </div>
-        <h2 className="text-base font-bold text-stone-900">Your trainer account is pending approval</h2>
-        <p className="max-w-sm text-sm text-stone-500">
-          Thanks for signing up, {form.name.split(" ")[0]}. An admin needs to approve trainer accounts before you can
-          create classes or manage materials. You're signed in — just with limited access until then.
+        <h2 className="text-sm font-bold text-stone-900">Your trainer account is pending approval</h2>
+        <p className="text-xs text-stone-500">
+          Thanks for signing up, {form.name.split(" ")[0]}. An admin must approve trainer accounts before you can manage courses.
         </p>
         <button
           onClick={onSignedUp}
-          className="mt-2 flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800"
+          className="mt-2 flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800"
         >
-          Continue <ArrowRight size={14} />
+          Continue <ArrowRight size={13} />
         </button>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-3">
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
           <AlertCircle size={14} className="shrink-0" /> {error}
         </div>
       )}
-      <div>
-        <label className="mb-1 block text-xs font-semibold text-stone-600">Full name</label>
-        <input
+      <Field label="Full Name">
+        <FilledInput
           value={form.name}
           onChange={(e) => update("name", e.target.value)}
           required
-          placeholder="e.g. Kofi Adu"
-          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+          placeholder="Enter your full name..."
         />
-      </div>
-      <div>
-        <label className="mb-1 block text-xs font-semibold text-stone-600">Email</label>
-        <input
+      </Field>
+
+      <Field label="Email Address">
+        <FilledInput
           type="email"
           value={form.email}
           onChange={(e) => update("email", e.target.value)}
           required
-          placeholder="you@example.com"
-          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+          placeholder="Enter your email..."
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <PasswordField
+          label="Password"
+          value={form.password}
+          onChange={(e) => update("password", e.target.value)}
+          placeholder="6+ chars"
+        />
+        <PasswordField
+          label="Confirm"
+          value={form.confirmPassword}
+          onChange={(e) => update("confirmPassword", e.target.value)}
+          placeholder="Repeat"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-stone-600">Password</label>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => update("password", e.target.value)}
-            required
-            placeholder="At least 6 characters"
-            className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold text-stone-600">Confirm password</label>
-          <input
-            type="password"
-            value={form.confirmPassword}
-            onChange={(e) => update("confirmPassword", e.target.value)}
-            required
-            placeholder="Repeat password"
-            className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-          />
-        </div>
-      </div>
-      <div>
-        <label className="mb-1 block text-xs font-semibold text-stone-600">Department</label>
-        <input
+
+      <Field label="Department">
+        <FilledInput
           value={form.department}
           onChange={(e) => update("department", e.target.value)}
-          placeholder="e.g. Sales"
-          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+          placeholder="e.g. Health Systems"
         />
-      </div>
+      </Field>
+
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-stone-600">I'm signing up as a</label>
+        <label className="mb-1.5 block text-xs font-semibold text-stone-700">Role</label>
         <div className="flex gap-2">
           {["learner", "trainer", "admin"].map((r) => (
             <button
               type="button"
               key={r}
               onClick={() => update("role", r)}
-              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold capitalize transition ${
-                form.role === r ? "border-brand-600 bg-brand-50 text-brand-800" : "border-stone-200 text-stone-600 hover:bg-stone-50"
+              className={`flex-1 rounded-lg py-2 text-xs font-semibold capitalize transition ${
+                form.role === r ? "bg-brand-700 text-white shadow-2xs" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
               }`}
             >
               {r}
             </button>
           ))}
         </div>
-        {form.role === "trainer" && (
-          <p className="mt-1.5 text-[11px] text-amber-700">Trainer accounts need admin approval before you can run classes.</p>
-        )}
-        {form.role === "admin" && (
-          <p className="mt-1.5 text-[11px] text-stone-400">Admin accounts get full org-wide access — use for internal staff.</p>
-        )}
       </div>
+
       <button
         type="submit"
         disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
       >
-        {loading && <Loader2 size={15} className="animate-spin" />}
-        {loading ? "Creating account..." : "Create account"}
+        {loading && <Loader2 size={14} className="animate-spin" />}
+        {loading ? "Creating account..." : "Create Account"}
       </button>
     </form>
   );
@@ -361,38 +395,73 @@ export default function LoginPage() {
   const redirectTo = location.state?.from || "/";
 
   const goNext = () => navigate(redirectTo, { replace: true });
+  const isLogin = tab === "login";
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-emerald-50 px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-700 text-white">
-            <GraduationCap size={24} />
+    <div className="flex h-screen w-full overflow-hidden bg-white">
+      {/* Scrollable Left Form Column */}
+      <div className="flex h-full w-full flex-col justify-between overflow-y-auto px-6 py-8 sm:px-10 md:px-14 lg:w-1/2 lg:px-16">
+        {/* Top Header */}
+        <div className="mx-auto w-full max-w-sm">
+          <div className="mb-5 flex flex-col items-center text-center">
+            <div className="mb-1.5 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-white shadow-xs">
+                <GraduationCap size={18} />
+              </div>
+              <span className="text-base font-extrabold tracking-tight text-stone-900">Afenet LMS</span>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
+              Workplace learning &amp; development
+            </p>
           </div>
-          <h1 className="text-2xl font-extrabold text-stone-900">Afenet LMS</h1>
-          {location.state?.from && (
-            <p className="mt-1 text-xs font-semibold text-brand-700">Sign in or create an account to continue enrolling.</p>
-          )}
-        </div>
 
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-6 flex gap-1 rounded-lg bg-stone-100 p-1">
+          {/* Navigation Tabs */}
+          <div className="mb-5 flex justify-center gap-8 border-b border-stone-100">
             <button
               onClick={() => setTab("login")}
-              className={`flex-1 rounded-md py-2 text-sm font-semibold transition ${tab === "login" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}
+              className={`-mb-px border-b-2 pb-2.5 text-xs sm:text-sm font-bold transition ${
+                isLogin ? "border-brand-700 text-stone-900" : "border-transparent text-stone-400 hover:text-stone-600"
+              }`}
             >
-              Log in
+              Log In
             </button>
             <button
               onClick={() => setTab("signup")}
-              className={`flex-1 rounded-md py-2 text-sm font-semibold transition ${tab === "signup" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}
+              className={`-mb-px border-b-2 pb-2.5 text-xs sm:text-sm font-bold transition ${
+                !isLogin ? "border-brand-700 text-stone-900" : "border-transparent text-stone-400 hover:text-stone-600"
+              }`}
             >
-              Sign up
+              Sign Up
             </button>
           </div>
 
-          {tab === "login" ? <LoginTab onLoggedIn={goNext} /> : <SignupTab onSignedUp={goNext} />}
+          {/* Title and Body */}
+          <div className="mb-5 text-center">
+            <h1 className="text-xl sm:text-2xl font-black text-stone-900">
+              {isLogin ? "Welcome Back" : "Create Your Account"}
+            </h1>
+            <p className="mt-1 text-xs text-stone-500">
+              {location.state?.from
+                ? "Sign in or create an account to continue enrolling."
+                : isLogin
+                ? "Sign in to access your courses and dashboard."
+                : "Sign up to start your learning journey."}
+            </p>
+          </div>
+
+          {isLogin ? <LoginTab onLoggedIn={goNext} /> : <SignupTab onSignedUp={goNext} />}
         </div>
+
+        {/* Subtle Footer */}
+        <div className="mx-auto mt-6 text-center text-[11px] text-stone-400">
+          © {new Date().getFullYear()} Afenet LMS · Secure Authentication
+        </div>
+      </div>
+
+      {/* Right Hero Image (Static, No Scroll) */}
+      <div className="relative hidden h-full lg:block lg:w-1/2">
+        <img src={HERO_IMAGE} alt="Afenet learning environment" className="h-full w-full object-cover select-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
       </div>
     </div>
   );
