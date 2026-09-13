@@ -37,13 +37,14 @@ export default function TrainerDashboard({ onMenuClick }) {
   const activeClasses = classes.filter((c) => c.status === "active").length;
 
   const classRows = classes.map((cls) => {
-    const course = courses.find((c) => c.id === cls.courseId);
+    const classCourseIds = (cls.courses || []).map((c) => c.courseId);
+    const classCourses = classCourseIds.map((id) => courses.find((c) => c.id === id)).filter(Boolean);
     const members = users.filter((u) => cls.memberIds.includes(u.id));
-    const memberEnrollments = enrollments.filter((e) => e.courseId === cls.courseId && cls.memberIds.includes(e.userId));
+    const memberEnrollments = enrollments.filter((e) => classCourseIds.includes(e.courseId) && cls.memberIds.includes(e.userId));
     const avgProgress = memberEnrollments.length
       ? Math.round(memberEnrollments.reduce((sum, e) => sum + e.progress, 0) / memberEnrollments.length)
       : 0;
-    return { cls, course, members, avgProgress };
+    return { cls, classCourses, members, avgProgress };
   });
 
   const overallAvg = classRows.length
@@ -65,15 +66,21 @@ export default function TrainerDashboard({ onMenuClick }) {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
             <h2 className="text-sm font-bold text-stone-800">Your classes</h2>
-            {classRows.map(({ cls, course, members, avgProgress }) => (
+            {classRows.map(({ cls, classCourses, members, avgProgress }) => (
               <div key={cls.id} className="rounded-2xl border border-stone-200 bg-white p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                  {course && <img src={course.thumbnailImage} alt="" className="h-16 w-24 shrink-0 rounded-xl object-cover" />}
+                  {classCourses[0] && <img src={classCourses[0].thumbnailImage} alt="" className="h-16 w-24 shrink-0 rounded-xl object-cover" />}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <h3 className="truncate text-sm font-bold text-stone-900">{cls.title}</h3>
-                        <p className="truncate text-xs text-stone-500">{course?.title ?? "No course attached"}</p>
+                        <p className="truncate text-xs text-stone-500">
+                          {classCourses.length === 0
+                            ? "No course attached"
+                            : classCourses.length === 1
+                            ? classCourses[0].title
+                            : `${classCourses[0].title} +${classCourses.length - 1} more`}
+                        </p>
                       </div>
                       <span
                         className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${
@@ -121,7 +128,7 @@ export default function TrainerDashboard({ onMenuClick }) {
           <div className="space-y-4">
             <div className="rounded-2xl border border-stone-200 bg-white p-5 text-center">
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">Overall class progress</p>
-              <CircularProgress value={overallAvg} size={100} strokeWidth={9} color="#15803d" />
+              <CircularProgress value={overallAvg} size={100} strokeWidth={9} color="#21409A" />
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-white p-5">
@@ -129,7 +136,7 @@ export default function TrainerDashboard({ onMenuClick }) {
                 <BookOpen size={14} /> Courses you teach from
               </h3>
               <div className="space-y-2">
-                {[...new Set(classRows.map((r) => r.course?.id).filter(Boolean))].map((courseId) => {
+                {[...new Set(classRows.flatMap((r) => r.classCourses.map((c) => c.id)))].map((courseId) => {
                   const course = courses.find((c) => c.id === courseId);
                   return (
                     <div key={courseId} className="flex items-center gap-2 text-xs">

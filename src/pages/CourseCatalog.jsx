@@ -3,12 +3,15 @@ import { useSelector } from "react-redux";
 import { Search } from "lucide-react";
 import Header from "../components/Header";
 import CourseCard from "../components/CourseCard";
-import { selectAllCourses } from "../store/slices/coursesSlice";
+import { selectPublicCourses } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
 
 export default function CourseCatalog({ onMenuClick }) {
-  const courses = useSelector(selectAllCourses);
+  // Only approved courses are ever shown here — this is the catalog the
+  // public and every learner sees, so trainer submissions awaiting review
+  // stay invisible until an admin approves them.
+  const courses = useSelector(selectPublicCourses);
   const currentUser = useSelector(selectCurrentUser);
   const enrollments = useSelector((state) => (currentUser ? selectEnrollmentsByUser(state, currentUser.id) : []));
   const enrollmentByCourseId = Object.fromEntries(enrollments.map((e) => [e.courseId, e]));

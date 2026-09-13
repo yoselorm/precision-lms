@@ -1,7 +1,8 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Clock, Ban, LogOut, Eye, GraduationCap } from "lucide-react";
+import { Clock, Ban, LogOut, Eye } from "lucide-react";
 import { selectCurrentUser, selectRealUser, logout, stopPreview } from "../store/slices/authSlice";
+import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
 export default function PendingApprovalPage() {
   const dispatch = useDispatch();
@@ -12,8 +13,8 @@ export default function PendingApprovalPage() {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-stone-100 via-stone-50 to-amber-50 px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-700 text-white">
-          <GraduationCap size={22} />
+        <div className="mx-auto mb-4 flex h-12 w-20 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-stone-200">
+          <img src={afenetLogo} alt="AFENET" className="h-full w-full object-contain p-1" />
         </div>
         <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${isDenied ? "bg-rose-50" : "bg-amber-50"}`}>
           {isDenied ? <Ban size={24} className="text-rose-600" /> : <Clock size={24} className="text-amber-600" />}

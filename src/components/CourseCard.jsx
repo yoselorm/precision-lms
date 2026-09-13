@@ -41,7 +41,7 @@ export default function CourseCard({ course, enrollment }) {
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-400">
           <span className="flex items-center gap-1">
-            <Layers size={11} /> {course.modules.length} Topics
+            <Layers size={11} /> {course.topics.length} Topics
           </span>
           <span className="flex items-center gap-1">
             <Users size={11} /> +{course.studentsCount} Students

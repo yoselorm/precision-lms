@@ -15,16 +15,18 @@ import {
   LockOpen,
   HelpCircle,
   ArrowRight,
+  UserPlus,
+  BookOpen,
 } from "lucide-react";
 import Header from "../components/Header";
 import ProgressBar from "../components/ProgressBar";
 import SubmissionUpload from "../components/SubmissionUpload";
 import QuizIntroCard from "../components/QuizIntroCard";
-import { selectClassById, selectClassQuizAttempts } from "../store/slices/classesSlice";
-import { selectCourseById } from "../store/slices/coursesSlice";
+import { selectClassById, selectClassQuizAttempts, enrollInClass } from "../store/slices/classesSlice";
+import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectEnrollment } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment, enrollUser } from "../store/slices/enrollmentsSlice";
 import {
   selectAssignmentsByClass,
   addAssignment,
@@ -281,8 +283,13 @@ function ClassQuizSection({ cls, canManage, isMember }) {
   );
 }
 
-function RosterRow({ member, courseId }) {
-  const enrollment = useSelector((state) => selectEnrollment(state, member.id, courseId));
+// Averages progress across every course attached to the class — with one
+// course this is identical to reading that course's enrollment directly.
+function RosterRow({ member, courseIds }) {
+  const enrollments = useSelector((state) => courseIds.map((courseId) => selectEnrollment(state, member.id, courseId)));
+  const known = enrollments.filter(Boolean);
+  const avgProgress = known.length ? Math.round(known.reduce((sum, e) => sum + e.progress, 0) / known.length) : 0;
+
   return (
     <div className="flex items-center gap-3 rounded-lg border border-stone-100 px-3 py-2.5">
       <img src={member.avatarUrl} alt={member.name} className="h-8 w-8 rounded-full object-cover" />
@@ -291,9 +298,9 @@ function RosterRow({ member, courseId }) {
         <p className="text-[10px] text-stone-400">{member.department}</p>
       </div>
       <div className="w-28">
-        <ProgressBar value={enrollment?.progress ?? 0} heightClass="h-1.5" />
+        <ProgressBar value={avgProgress} heightClass="h-1.5" />
       </div>
-      <span className="w-10 text-right text-xs font-mono text-stone-500">{enrollment?.progress ?? 0}%</span>
+      <span className="w-10 text-right text-xs font-mono text-stone-500">{avgProgress}%</span>
     </div>
   );
 }
@@ -301,12 +308,14 @@ function RosterRow({ member, courseId }) {
 export default function ClassDetailPage({ onMenuClick }) {
   const { classId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const cls = useSelector((state) => selectClassById(state, classId));
-  const course = useSelector((state) => (cls ? selectCourseById(state, cls.courseId) : null));
+  const allCourses = useSelector(selectAllCourses);
   const users = useSelector(selectAllUsers);
   const assignments = useSelector((state) => selectAssignmentsByClass(state, classId));
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
 
   if (!cls) {
     return (
@@ -323,10 +332,26 @@ export default function ClassDetailPage({ onMenuClick }) {
   const members = users.filter((u) => cls.memberIds.includes(u.id));
   const isMember = cls.memberIds.includes(currentUser.id);
   const canManage = currentUser.role === "admin" || currentUser.id === cls.trainerId;
+  const classCourses = cls.courses || [];
+  const courseIds = classCourses.map((c) => c.courseId);
+  const resolvedCourses = classCourses.map((entry) => ({ ...entry, course: allCourses.find((c) => c.id === entry.courseId) })).filter((e) => e.course);
+  const canEnroll = !isMember && cls.status !== "completed";
+
+  const handleEnroll = () => {
+    setEnrolling(true);
+    dispatch(enrollInClass({ classId: cls.id, userId: currentUser.id }));
+    courseIds.forEach((courseId) => dispatch(enrollUser({ userId: currentUser.id, courseId })));
+    dispatch(pushToast({ type: "success", message: `Enrolled in "${cls.title}".` }));
+    setEnrolling(false);
+  };
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title={cls.title} subtitle={course?.title} onMenuClick={onMenuClick} />
+      <Header
+        title={cls.title}
+        subtitle={resolvedCourses.length === 1 ? resolvedCourses[0].course.title : `${resolvedCourses.length} courses`}
+        onMenuClick={onMenuClick}
+      />
 
       <div className="mx-auto w-full max-w-4xl space-y-5 p-4 sm:p-6 lg:p-8">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-stone-700">
@@ -334,8 +359,7 @@ export default function ClassDetailPage({ onMenuClick }) {
         </button>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            {course && <img src={course.thumbnailImage} alt="" className="h-20 w-32 shrink-0 rounded-xl object-cover" />}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${STATUS_STYLES[cls.status]}`}>{cls.status}</span>
@@ -354,15 +378,45 @@ export default function ClassDetailPage({ onMenuClick }) {
                 </span>
               </div>
             </div>
-            {canManage && (
-              <button
-                onClick={() => navigate(`/classes/${cls.id}/manage`)}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
-              >
-                <Settings2 size={13} /> Manage materials
-              </button>
-            )}
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {canEnroll && (
+                <button
+                  onClick={handleEnroll}
+                  disabled={enrolling}
+                  className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-800 disabled:opacity-60"
+                >
+                  <UserPlus size={13} /> Enroll in this class
+                </button>
+              )}
+              {canManage && (
+                <button
+                  onClick={() => navigate(`/classes/${cls.id}/manage`)}
+                  className="flex items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                >
+                  <Settings2 size={13} /> Manage materials
+                </button>
+              )}
+            </div>
           </div>
+
+          {resolvedCourses.length > 0 && (
+            <div className="mt-4 space-y-1.5 border-t border-stone-100 pt-4">
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                <BookOpen size={11} /> Courses in this class
+              </p>
+              {resolvedCourses.map(({ course, mandatory }) => (
+                <div key={course.id} className="flex items-center gap-2.5 rounded-lg bg-stone-50 px-3 py-2 text-xs">
+                  <img src={course.thumbnailImage} alt="" className="h-8 w-12 shrink-0 rounded object-cover" />
+                  <span className="flex-1 font-medium text-stone-700">{course.title}</span>
+                  {mandatory && (
+                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700">
+                      Mandatory
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
@@ -371,7 +425,7 @@ export default function ClassDetailPage({ onMenuClick }) {
           </h3>
           <div className="space-y-1.5">
             {members.map((m) => (
-              <RosterRow key={m.id} member={m} courseId={cls.courseId} />
+              <RosterRow key={m.id} member={m} courseIds={courseIds} />
             ))}
             {members.length === 0 && <p className="text-xs text-stone-400">No students enrolled in this class yet.</p>}
           </div>

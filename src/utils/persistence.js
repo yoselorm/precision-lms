@@ -7,7 +7,7 @@
 // already has a persisted session keeps seeing their old cached copy of the
 // courses/quizzes forever, silently masking any content/shape update.
 const STORAGE_KEY = "afenet-lms:store";
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 7;
 
 export function loadState() {
   try {

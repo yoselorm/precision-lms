@@ -20,17 +20,17 @@ export default function WeeklyProgressChart({ data }) {
             cursor={{ fill: "#f5f5f4" }}
             contentStyle={{ borderRadius: 8, border: "1px solid #e7e5e4", fontSize: 12 }}
           />
-          <Bar dataKey="completed" name="Completed" fill="#15803d" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="inProgress" name="In progress" fill="#86efac" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="completed" name="Completed" fill="#21409A" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="inProgress" name="In progress" fill="#849BDF" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
 
       <div className="mt-2 flex items-center gap-4 text-[11px] text-stone-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-emerald-700" /> Completed
+          <span className="h-2 w-2 rounded-full bg-brand-700" /> Completed
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-emerald-300" /> In progress
+          <span className="h-2 w-2 rounded-full bg-brand-300" /> In progress
         </span>
       </div>
     </div>

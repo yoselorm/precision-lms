@@ -57,7 +57,7 @@ export default function FileOrUrlInput({ value, onChange, accept, kind = "file",
             className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-xs font-medium text-stone-600 hover:border-brand-500 hover:text-brand-700"
           >
             <Upload size={13} />
-            {kind === "image" ? "Choose image" : "Choose video file"}
+            {kind === "image" ? "Choose image" : kind === "document" ? "Choose document file" : "Choose video file"}
           </label>
           {(fileName || value) && (
             <span className="flex items-center gap-1 truncate rounded-lg bg-stone-100 px-2 py-1 text-[11px] text-stone-500">
@@ -67,7 +67,7 @@ export default function FileOrUrlInput({ value, onChange, accept, kind = "file",
               </button>
             </span>
           )}
-          {fileName && kind === "video" && (
+          {fileName && (kind === "video" || kind === "document") && (
             <p className="basis-full text-[10px] text-amber-600">
               Uploaded files live in this browser tab only and won't survive a refresh — paste a URL instead for something that sticks around.
             </p>
@@ -77,7 +77,7 @@ export default function FileOrUrlInput({ value, onChange, accept, kind = "file",
         <input
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={kind === "image" ? "Paste an image URL" : "Video URL (mp4 link or embed URL)"}
+          placeholder={kind === "image" ? "Paste an image URL" : kind === "document" ? "Document URL (PDF/Word link)" : "Video URL (mp4 link or embed URL)"}
           className="w-full rounded-lg border border-stone-200 px-3 py-2 text-xs outline-none focus:border-brand-600"
         />
       )}

@@ -1,209 +1,68 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Plus, X, Layers, Tag, Award, Trophy, HelpCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Layers, Settings2, Check, Ban, Clock } from "lucide-react";
 import Header from "../components/Header";
-import ThumbnailPicker from "../components/ThumbnailPicker";
-import TopicListEditor from "../components/TopicListEditor";
-import QuizBuilder from "../components/QuizBuilder";
-import QuizManageModal from "../components/QuizManageModal";
-import { selectAllCourses, addCourse, setCourseQuiz } from "../store/slices/coursesSlice";
+import CourseFormModal from "../components/CourseFormModal";
+import { selectAllCourses, setCourseStatus } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
-const CATEGORIES = ["Compliance", "Leadership", "Onboarding", "Technical Skills", "Sales", "Marketing"];
+const STATUS_PILL = {
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+  denied: "bg-stone-100 text-stone-500 border-stone-200",
+};
 
-function CourseFormModal({ onClose }) {
-  const dispatch = useDispatch();
-  const [form, setForm] = useState({
-    title: "",
-    category: CATEGORIES[0],
-    mandatory: false,
-    durationMins: 45,
-    price: 0,
-    description: "",
-    certificateTitle: "",
-    thumbnailImage: "",
-    capstoneTitle: "",
-    capstoneInstructions: "",
-  });
-  const [topics, setTopics] = useState([]);
-  const [passingScore, setPassingScore] = useState(70);
-  const [timeLimitMins, setTimeLimitMins] = useState("");
-  const [quizQuestions, setQuizQuestions] = useState([]);
-
-  const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.title.trim()) return;
-    dispatch(addCourse({ ...form, modules: topics, quiz: { passingScore, timeLimitMins, questions: quizQuestions } }));
-    dispatch(pushToast({ type: "success", message: `"${form.title}" was created.` }));
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-xl animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-bold text-stone-900">Add a new course</h2>
-          <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-stone-600">Course title</label>
-            <input
-              value={form.title}
-              onChange={(e) => update("title", e.target.value)}
-              required
-              placeholder="e.g. Advanced Negotiation Skills"
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-          </div>
-
-          <ThumbnailPicker value={form.thumbnailImage} onChange={(v) => update("thumbnailImage", v)} />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-stone-600">Category</label>
-              <select
-                value={form.category}
-                onChange={(e) => update("category", e.target.value)}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-stone-600">Total duration (mins)</label>
-              <input
-                type="number"
-                min="5"
-                value={form.durationMins}
-                onChange={(e) => update("durationMins", e.target.value)}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-stone-600">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => update("description", e.target.value)}
-              rows={2}
-              placeholder="What will learners get out of this course?"
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-          </div>
-
-          <TopicListEditor topics={topics} onChange={setTopics} />
-
-          <div className="rounded-lg border border-stone-200 p-3">
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-stone-600">
-              <HelpCircle size={13} /> Knowledge check quiz (optional — can add later)
-            </p>
-            <QuizBuilder
-              passingScore={passingScore}
-              onPassingScoreChange={setPassingScore}
-              timeLimitMins={timeLimitMins}
-              onTimeLimitChange={setTimeLimitMins}
-              questions={quizQuestions}
-              onQuestionsChange={setQuizQuestions}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-stone-600">
-                <Tag size={12} /> Price (GH₵, 0 = free)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={form.price}
-                onChange={(e) => update("price", e.target.value)}
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-              />
-            </div>
-            <label className="mt-5 flex items-center gap-2 text-xs font-semibold text-stone-600">
-              <input type="checkbox" checked={form.mandatory} onChange={(e) => update("mandatory", e.target.checked)} className="text-brand-700" />
-              Mandatory course
-            </label>
-          </div>
-
-          <div>
-            <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-stone-600">
-              <Award size={12} /> Certificate title (leave blank for no certificate)
-            </label>
-            <input
-              value={form.certificateTitle}
-              onChange={(e) => update("certificateTitle", e.target.value)}
-              placeholder="e.g. Certificate of Completion — Advanced Negotiation"
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-          </div>
-
-          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-            <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-amber-800">
-              <Trophy size={12} /> Capstone project (optional)
-            </label>
-            <input
-              value={form.capstoneTitle}
-              onChange={(e) => update("capstoneTitle", e.target.value)}
-              placeholder="e.g. Final Case Study Submission"
-              className="mb-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-            {form.capstoneTitle && (
-              <textarea
-                value={form.capstoneInstructions}
-                onChange={(e) => update("capstoneInstructions", e.target.value)}
-                rows={2}
-                placeholder="What should students submit, and what should it cover?"
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-xs outline-none focus:border-brand-600"
-              />
-            )}
-            <p className="mt-1 text-[10px] text-amber-700">
-              Students will submit a PDF or Word doc for this from the course player.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50">
-            Cancel
-          </button>
-          <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
-            Create course
-          </button>
-        </div>
-        {topics.length === 0 && (
-          <p className="mt-3 text-[11px] text-stone-400">
-            No topics added — a default "Introduction" placeholder will be created. You can add real topics anytime from this list.
-          </p>
-        )}
-      </form>
-    </div>
-  );
-}
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "pending", label: "Pending approval" },
+];
 
 export default function AdminCourses({ onMenuClick }) {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const courses = useSelector(selectAllCourses);
   const [showForm, setShowForm] = useState(false);
-  const [managingQuizFor, setManagingQuizFor] = useState(null);
+  const [filter, setFilter] = useState("all");
+
+  const pendingCount = courses.filter((c) => c.status === "pending").length;
+  const filtered = useMemo(
+    () => (filter === "pending" ? courses.filter((c) => c.status === "pending") : courses),
+    [courses, filter]
+  );
+
+  const handleStatusChange = (course, status) => {
+    dispatch(setCourseStatus({ courseId: course.id, status }));
+    dispatch(
+      pushToast({
+        type: status === "approved" ? "success" : "info",
+        message: `"${course.title}" was ${status === "approved" ? "approved and is now public" : "denied"}.`,
+      })
+    );
+  };
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
       <Header title="Courses" subtitle={`${courses.length} courses published`} onMenuClick={onMenuClick} />
 
       <div className="space-y-4 p-4 sm:p-6 lg:p-8">
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`relative rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                  filter === f.id ? "border-brand-600 bg-brand-50 text-brand-800" : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                {f.label}
+                {f.id === "pending" && pendingCount > 0 && (
+                  <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">{pendingCount}</span>
+                )}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
@@ -218,73 +77,99 @@ export default function AdminCourses({ onMenuClick }) {
               <tr>
                 <th className="px-4 py-3">Course</th>
                 <th className="px-4 py-3">Category</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Price</th>
                 <th className="px-4 py-3">Certificate</th>
                 <th className="px-4 py-3">Capstone</th>
                 <th className="px-4 py-3">
                   <Layers size={12} className="inline" /> Topics
                 </th>
-                <th className="px-4 py-3">Quiz</th>
+                <th className="px-4 py-3">Quizzes</th>
                 <th className="px-4 py-3">Students</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {courses.map((c) => (
-                <tr key={c.id}>
-                  <td className="flex items-center gap-2.5 px-4 py-3 font-semibold text-stone-800">
-                    <img src={c.thumbnailImage} alt="" className="h-8 w-12 shrink-0 rounded object-cover" />
-                    <span>
-                      {c.title}
-                      {c.mandatory && (
-                        <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
-                          Mandatory
-                        </span>
+              {filtered.map((c) => {
+                const quizCount = c.topics.filter((t) => t.quiz?.questions?.length).length;
+                const status = c.status || "approved";
+                return (
+                  <tr key={c.id}>
+                    <td className="flex items-center gap-2.5 px-4 py-3 font-semibold text-stone-800">
+                      <img src={c.thumbnailImage} alt="" className="h-8 w-12 shrink-0 rounded object-cover" />
+                      <span>
+                        {c.title}
+                        {c.mandatory && (
+                          <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
+                            Mandatory
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-stone-500">{c.category}</td>
+                    <td className="px-4 py-3">
+                      <span className={`flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${STATUS_PILL[status]}`}>
+                        {status === "pending" && <Clock size={10} />}
+                        {status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.price > 0 ? (
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">GH₵{c.price}</span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Free</span>
                       )}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-stone-500">{c.category}</td>
-                  <td className="px-4 py-3">
-                    {c.price > 0 ? (
-                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">GH₵{c.price}</span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Free</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-stone-500">{c.certificate ? "Yes" : "—"}</td>
-                  <td className="px-4 py-3 text-stone-500">{c.capstone ? "Yes" : "—"}</td>
-                  <td className="px-4 py-3 text-stone-500">{c.modules.length}</td>
-                  <td className="px-4 py-3 text-stone-500">
-                    {c.quiz?.questions?.length ? `${c.quiz.questions.length} question${c.quiz.questions.length > 1 ? "s" : ""}` : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setManagingQuizFor(c)}
-                      className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
-                    >
-                      <HelpCircle size={11} /> Manage quiz
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-stone-500">{c.certificate ? "Yes" : "—"}</td>
+                    <td className="px-4 py-3 text-stone-500">{c.capstone ? "Yes" : "—"}</td>
+                    <td className="px-4 py-3 text-stone-500">{c.topics.length}</td>
+                    <td className="px-4 py-3 text-stone-500">{quizCount || "—"}</td>
+                    <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        {status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => handleStatusChange(c, "approved")}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
+                            >
+                              <Check size={11} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleStatusChange(c, "denied")}
+                              className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                            >
+                              <Ban size={11} /> Deny
+                            </button>
+                          </>
+                        )}
+                        {status === "denied" && (
+                          <button
+                            onClick={() => handleStatusChange(c, "approved")}
+                            className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                          >
+                            <Check size={11} /> Approve anyway
+                          </button>
+                        )}
+                        <button
+                          onClick={() => navigate(`/admin/courses/${c.id}/manage`)}
+                          className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                        >
+                          <Settings2 size={11} /> Manage
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          {filtered.length === 0 && <p className="p-4 text-center text-xs text-stone-400">No courses match this filter.</p>}
         </div>
       </div>
 
-      {showForm && <CourseFormModal onClose={() => setShowForm(false)} />}
-      {managingQuizFor && (
-        <QuizManageModal
-          title="Manage quiz"
-          subtitle={managingQuizFor.title}
-          quiz={managingQuizFor.quiz}
-          onSave={(payload) => {
-            dispatch(setCourseQuiz({ courseId: managingQuizFor.id, ...payload }));
-            dispatch(pushToast({ type: "success", message: `Quiz saved for "${managingQuizFor.title}".` }));
-          }}
-          onClose={() => setManagingQuizFor(null)}
-        />
+      {showForm && (
+        <CourseFormModal onClose={() => setShowForm(false)} onCreated={(courseId) => navigate(`/admin/courses/${courseId}/manage`)} />
       )}
     </div>
   );

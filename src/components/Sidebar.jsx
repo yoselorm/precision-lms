@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  GraduationCap,
   LayoutDashboard,
   BookOpen,
   BookMarked,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import { selectCurrentUser, selectRealUser, switchDemoUser, stopPreview, logout } from "../store/slices/authSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
+import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
 const baseLinks = [
   { to: "/", label: "My Dashboard", icon: LayoutDashboard },
@@ -48,14 +48,17 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   const [adminOpen, setAdminOpen] = useState(true);
   const canPreview = realUser?.role === "admin" || (!realUser && currentUser.role === "admin");
 
-  // Trainers/learners only ever see their own classes on this page (no
-  // self-service way to join/browse others' cohorts), so the nav label
-  // reflects that; admins still get the org-wide "Classes" view.
+  // Trainers only ever see the classes they teach on this page, so the nav
+  // label reflects that; admins and learners both get the full, browsable
+  // "Classes" list (learners self-enroll from there).
   const links = baseLinks.map((link) =>
-    link.to === "/classes" && currentUser.role !== "admin" ? { ...link, label: "My Classes" } : link
+    link.to === "/classes" && currentUser.role === "trainer" ? { ...link, label: "My Classes" } : link
   );
   if (currentUser.role === "learner") {
     links.splice(2, 0, { to: "/my-courses", label: "My Courses", icon: BookMarked });
+  }
+  if (currentUser.role === "trainer") {
+    links.splice(1, 0, { to: "/trainer/courses", label: "Courses", icon: BookMarked });
   }
   if (currentUser.role === "admin") {
     links.splice(3, 0, { to: "/team", label: "My Team", icon: Users });
@@ -74,27 +77,27 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-full shrink-0 flex-col overflow-hidden bg-gradient-to-b from-emerald-700 via-emerald-800 to-emerald-950 text-emerald-50 shadow-xl transition-all duration-200 lg:static
+        className={`fixed inset-y-0 left-0 z-40 flex h-full shrink-0 flex-col overflow-hidden bg-gradient-to-b from-brand-800 via-brand-900 to-brand-950 text-brand-50 shadow-xl transition-all duration-200 lg:static
           ${collapsed ? "lg:w-[76px]" : "lg:w-64"}
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"} w-64 lg:translate-x-0`}
       >
         {/* Decorative glow accents to make the gradient feel intentional, not flat */}
-        <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-emerald-400/20 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 -left-10 h-40 w-40 rounded-full bg-emerald-300/10 blur-3xl" />
+        <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-brand-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 -left-10 h-40 w-40 rounded-full bg-brand-300/10 blur-3xl" />
 
         <div className="relative flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/20 backdrop-blur-sm">
-              <GraduationCap size={18} />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-white/20">
+              <img src={afenetLogo} alt="AFENET" className="h-full w-full object-contain" />
             </div>
             {!collapsed && <span className="truncate text-sm font-bold tracking-tight text-white">Afenet LMS</span>}
           </div>
-          <button onClick={onCloseMobile} className="text-emerald-100/70 hover:text-white lg:hidden">
+          <button onClick={onCloseMobile} className="text-brand-100/70 hover:text-white lg:hidden">
             <X size={18} />
           </button>
           <button
             onClick={onToggleCollapse}
-            className="hidden shrink-0 text-emerald-100/70 hover:text-white lg:block"
+            className="hidden shrink-0 text-brand-100/70 hover:text-white lg:block"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
@@ -115,7 +118,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
                 } ${
                   isActive
                     ? "bg-white/15 text-white shadow-sm ring-1 ring-white/10"
-                    : "text-emerald-100/75 hover:bg-white/10 hover:text-white"
+                    : "text-brand-100/75 hover:bg-white/10 hover:text-white"
                 }`
               }
             >
@@ -128,7 +131,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
             <div className="pt-2">
               <button
                 onClick={() => setAdminOpen((v) => !v)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider text-emerald-200/60 hover:text-emerald-100 ${
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider text-brand-200/60 hover:text-brand-100 ${
                   collapsed ? "justify-center" : "justify-between"
                 }`}
               >
@@ -151,7 +154,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
                         } ${
                           isActive
                             ? "bg-white/15 text-white shadow-sm ring-1 ring-white/10"
-                            : "text-emerald-100/75 hover:bg-white/10 hover:text-white"
+                            : "text-brand-100/75 hover:bg-white/10 hover:text-white"
                         }`
                       }
                     >
@@ -190,7 +193,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
           {canPreview && (
             <>
               {!collapsed && (
-                <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-emerald-200/60">Preview as</p>
+                <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wider text-brand-200/60">Preview as</p>
               )}
               {!collapsed ? (
                 <div className="relative mb-2">
@@ -208,7 +211,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-2.5 text-emerald-100/70" />
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-2.5 text-brand-100/70" />
                 </div>
               ) : (
                 <img
@@ -224,7 +227,7 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
           <button
             onClick={handleLogout}
             title="Log out"
-            className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-emerald-100/70 transition hover:bg-white/10 hover:text-rose-300 ${
+            className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-brand-100/70 transition hover:bg-white/10 hover:text-rose-300 ${
               collapsed ? "justify-center" : ""
             }`}
           >

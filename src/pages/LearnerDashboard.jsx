@@ -102,7 +102,7 @@ export default function LearnerDashboard({ onMenuClick }) {
                 <p className="mt-1 text-2xl font-extrabold text-stone-900">{avgProgress}%</p>
                 <p className="text-[11px] text-stone-400">across {enrollments.length} assigned courses</p>
               </div>
-              <CircularProgress value={avgProgress} size={64} strokeWidth={6} color="#15803d" />
+              <CircularProgress value={avgProgress} size={64} strokeWidth={6} color="#21409A" />
             </div>
           </div>
 

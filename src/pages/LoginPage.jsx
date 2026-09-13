@@ -18,6 +18,7 @@ import {
 import { login } from "../store/slices/authSlice";
 import { selectAllUsers, addUser, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
 const HERO_IMAGE = "https://picsum.photos/seed/afenet-study-hero/1400/1867";
 
@@ -405,8 +406,8 @@ export default function LoginPage() {
         <div className="mx-auto w-full max-w-sm">
           <div className="mb-5 flex flex-col items-center text-center">
             <div className="mb-1.5 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-white shadow-xs">
-                <GraduationCap size={18} />
+              <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white shadow-xs ring-1 ring-stone-200">
+                <img src={afenetLogo} alt="AFENET" className="h-full w-full object-contain p-0.5" />
               </div>
               <span className="text-base font-extrabold tracking-tight text-stone-900">Afenet LMS</span>
             </div>

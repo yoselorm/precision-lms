@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { MessageSquare, Trash2, Send } from "lucide-react";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
-import { addComment, removeComment, selectCommentsForModule } from "../store/slices/commentsSlice";
+import { addComment, removeComment, selectCommentsForTopic } from "../store/slices/commentsSlice";
 
 function formatWhen(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -11,18 +11,19 @@ function formatWhen(iso) {
 
 // A lightweight discussion thread under a course topic — learners and
 // trainers/admins previewing the course can leave notes or questions
-// specific to that video/reading, visible to everyone taking the course.
-export default function ModuleComments({ courseId, moduleId }) {
+// specific to that topic, visible to everyone taking the course, shared
+// across all lessons within it.
+export default function TopicComments({ courseId, topicId }) {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const users = useSelector(selectAllUsers);
-  const comments = useSelector((state) => selectCommentsForModule(state, courseId, moduleId));
+  const comments = useSelector((state) => selectCommentsForTopic(state, courseId, topicId));
   const [text, setText] = useState("");
 
   const handlePost = (e) => {
     e.preventDefault();
     if (!text.trim()) return;
-    dispatch(addComment({ courseId, moduleId, userId: currentUser.id, text: text.trim() }));
+    dispatch(addComment({ courseId, topicId, userId: currentUser.id, text: text.trim() }));
     setText("");
   };
 

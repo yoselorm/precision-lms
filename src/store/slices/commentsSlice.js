@@ -13,12 +13,12 @@ const commentsSlice = createSlice({
       reducer(state, action) {
         state.comments.push(action.payload);
       },
-      prepare({ courseId, moduleId, userId, text }) {
+      prepare({ courseId, topicId, userId, text }) {
         return {
           payload: {
             id: `cmt-${nanoid(6)}`,
             courseId,
-            moduleId,
+            topicId,
             userId,
             text,
             createdAt: new Date().toISOString(),
@@ -35,7 +35,7 @@ const commentsSlice = createSlice({
 export const { addComment, removeComment } = commentsSlice.actions;
 export default commentsSlice.reducer;
 
-export const selectCommentsForModule = (state, courseId, moduleId) =>
+export const selectCommentsForTopic = (state, courseId, topicId) =>
   state.comments.comments
-    .filter((c) => c.courseId === courseId && c.moduleId === moduleId)
+    .filter((c) => c.courseId === courseId && c.topicId === topicId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));

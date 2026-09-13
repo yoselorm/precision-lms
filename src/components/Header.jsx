@@ -6,7 +6,7 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectPendingTrainers } from "../store/slices/usersSlice";
 import { selectAllEnrollments, selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
 import { selectClassesByTrainer } from "../store/slices/classesSlice";
-import { selectAllCourses } from "../store/slices/coursesSlice";
+import { selectAllCourses, selectPendingCourses } from "../store/slices/coursesSlice";
 import { isOverdue } from "./StatusBadge";
 
 function daysUntil(dateStr) {
@@ -18,6 +18,7 @@ function daysUntil(dateStr) {
 // that already exists (enrollments, classes, pending approvals).
 function useNotifications(currentUser) {
   const pendingTrainers = useSelector(selectPendingTrainers);
+  const pendingCourses = useSelector(selectPendingCourses);
   const allEnrollments = useSelector(selectAllEnrollments);
   const myClasses = useSelector((state) => (currentUser?.role === "trainer" ? selectClassesByTrainer(state, currentUser.id) : []));
   const myEnrollments = useSelector((state) => (currentUser ? selectEnrollmentsByUser(state, currentUser.id) : []));
@@ -34,6 +35,14 @@ function useNotifications(currentUser) {
           icon: Users,
           text: `${pendingTrainers.length} trainer application${pendingTrainers.length > 1 ? "s" : ""} awaiting approval`,
           to: "/admin/users",
+        });
+      }
+      if (pendingCourses.length > 0) {
+        items.push({
+          id: "pending-courses",
+          icon: Clock,
+          text: `${pendingCourses.length} trainer-submitted course${pendingCourses.length > 1 ? "s" : ""} awaiting approval`,
+          to: "/admin/courses",
         });
       }
       const overdueCount = allEnrollments.filter((e) => isOverdue(e.dueDate, e.status)).length;
@@ -80,7 +89,7 @@ function useNotifications(currentUser) {
     }
 
     return items;
-  }, [currentUser, pendingTrainers, allEnrollments, myClasses, myEnrollments, courses]);
+  }, [currentUser, pendingTrainers, pendingCourses, allEnrollments, myClasses, myEnrollments, courses]);
 }
 
 export default function Header({ title, subtitle, showSearch = false, onMenuClick }) {

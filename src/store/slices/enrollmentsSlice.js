@@ -25,8 +25,7 @@ const enrollmentsSlice = createSlice({
             status: "not-started",
             progress: 0,
             completedModuleIds: [],
-            quizScore: null,
-            quizAttempts: [],
+            topicQuizzes: {},
             dueDate: dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
           },
         };
@@ -45,13 +44,16 @@ const enrollmentsSlice = createSlice({
         enrollment.completedAt = new Date().toISOString().slice(0, 10);
       }
     },
+    // A course can now have several topic quizzes — each is tracked
+    // independently under enrollment.topicQuizzes[topicId].
     submitQuizScore(state, action) {
-      const { userId, courseId, score, passingScore } = action.payload;
+      const { userId, courseId, topicId, score, passingScore } = action.payload;
       const enrollment = state.enrollments.find((e) => e.userId === userId && e.courseId === courseId);
       if (!enrollment) return;
-      enrollment.quizScore = score;
-      if (!enrollment.quizAttempts) enrollment.quizAttempts = [];
-      enrollment.quizAttempts.push({
+      if (!enrollment.topicQuizzes) enrollment.topicQuizzes = {};
+      if (!enrollment.topicQuizzes[topicId]) enrollment.topicQuizzes[topicId] = { score: null, attempts: [] };
+      enrollment.topicQuizzes[topicId].score = score;
+      enrollment.topicQuizzes[topicId].attempts.push({
         score,
         passed: score >= (passingScore ?? 0),
         submittedAt: new Date().toISOString(),

@@ -4,14 +4,21 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Sampled straight from the AFENET logo (src/assets/images/afenet-logo.jpeg)
+        // — brand-700 (#21409A) is the exact logo blue; the rest of the scale
+        // is interpolated from it so every shade stays in the same hue family.
         brand: {
-          50: "#f0fdf4",
-          100: "#dcfce7",
-          200: "#bbf7d0",
-          600: "#16a34a",
-          700: "#15803d",
-          800: "#166534",
-          900: "#14532d",
+          50: "#F2F4F9",
+          100: "#DFE4F2",
+          200: "#B5C2E8",
+          300: "#849BDF",
+          400: "#486CD3",
+          500: "#284DBA",
+          600: "#2344A3",
+          700: "#21409A",
+          800: "#1C347A",
+          900: "#17295D",
+          950: "#121D3D",
         },
       },
       keyframes: {

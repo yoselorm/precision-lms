@@ -18,14 +18,16 @@ const classesSlice = createSlice({
       reducer(state, action) {
         state.classes.push(action.payload);
       },
-      prepare({ title, courseId, trainerId, memberIds, startDate, endDate }) {
+      prepare({ title, courses, trainerId, startDate, endDate }) {
         return {
           payload: {
             id: `cls-${nanoid(6)}`,
             title,
-            courseId,
+            courses: courses || [],
             trainerId,
-            memberIds: memberIds || [],
+            // Rosters are built by students enrolling themselves, not set by
+            // whoever creates the class.
+            memberIds: [],
             startDate,
             endDate,
             status: new Date(startDate) > new Date() ? "upcoming" : "active",
@@ -33,12 +35,43 @@ const classesSlice = createSlice({
         };
       },
     },
-    // Attach a different (or newly created) course to an existing class —
-    // used when a trainer/admin swaps out the material a class is built on.
-    setClassCourse(state, action) {
+    // Attach another course to an existing class (in addition to whatever's
+    // already there) — used from Manage materials' "Add a course" action.
+    addCourseToClass: {
+      reducer(state, action) {
+        const { classId, course } = action.payload;
+        const cls = state.classes.find((c) => c.id === classId);
+        if (!cls) return;
+        if (!cls.courses) cls.courses = [];
+        if (cls.courses.some((c) => c.courseId === course.courseId)) return;
+        cls.courses.push(course);
+      },
+      prepare({ classId, courseId, mandatory }) {
+        return { payload: { classId, course: { courseId, mandatory: !!mandatory } } };
+      },
+    },
+    removeCourseFromClass(state, action) {
       const { classId, courseId } = action.payload;
       const cls = state.classes.find((c) => c.id === classId);
-      if (cls) cls.courseId = courseId;
+      if (!cls) return;
+      cls.courses = (cls.courses || []).filter((c) => c.courseId !== courseId);
+    },
+    setCourseMandatory(state, action) {
+      const { classId, courseId, mandatory } = action.payload;
+      const cls = state.classes.find((c) => c.id === classId);
+      const entry = cls?.courses?.find((c) => c.courseId === courseId);
+      if (entry) entry.mandatory = !!mandatory;
+    },
+    // A student joining a class themselves — course-level enrollment records
+    // for the class's attached courses are created separately by the caller
+    // (dispatching enrollmentsSlice's enrollUser for each one), same way
+    // ClassMaterialsPage already dispatches more than one action for a
+    // single user-facing step.
+    enrollInClass(state, action) {
+      const { classId, userId } = action.payload;
+      const cls = state.classes.find((c) => c.id === classId);
+      if (!cls) return;
+      if (!cls.memberIds.includes(userId)) cls.memberIds.push(userId);
     },
     // Trainer/admin authors or edits a class's own quiz — separate from
     // whatever quiz lives on the attached course, and only seen by students
@@ -67,7 +100,15 @@ const classesSlice = createSlice({
   },
 });
 
-export const { addClass, setClassCourse, setClassQuiz, submitClassQuizAttempt } = classesSlice.actions;
+export const {
+  addClass,
+  addCourseToClass,
+  removeCourseFromClass,
+  setCourseMandatory,
+  enrollInClass,
+  setClassQuiz,
+  submitClassQuizAttempt,
+} = classesSlice.actions;
 export default classesSlice.reducer;
 
 export const selectAllClasses = (state) => state.classes.classes;

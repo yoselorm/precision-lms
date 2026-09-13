@@ -1,5 +1,6 @@
 import React from "react";
-import { Award, X, GraduationCap } from "lucide-react";
+import { Award, X } from "lucide-react";
+import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
 export default function CertificateView({ learnerName, courseTitle, issuer, completedAt, onClose }) {
   return (
@@ -22,8 +23,7 @@ export default function CertificateView({ learnerName, courseTitle, issuer, comp
 
           <div className="mt-8 flex items-center justify-between border-t border-stone-100 pt-4 text-left">
             <div className="flex items-center gap-2">
-              <GraduationCap size={16} className="text-brand-700" />
-              <span className="text-xs font-bold text-stone-700">Afenet LMS</span>
+              <img src={afenetLogo} alt="AFENET" className="h-5 w-auto object-contain" />
             </div>
             <div className="text-right">
               <p className="text-xs font-semibold text-stone-700">{issuer}</p>

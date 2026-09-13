@@ -12,6 +12,8 @@ import MyCoursesPage from "./pages/MyCoursesPage";
 import TeamPage from "./pages/TeamPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
+import CourseManagePage from "./pages/CourseManagePage";
+import TrainerCourses from "./pages/TrainerCourses";
 import AdminUsers from "./pages/AdminUsers";
 import AdminClasses from "./pages/AdminClasses";
 import AdminEnroll from "./pages/AdminEnroll";
@@ -48,7 +50,7 @@ function AppShell() {
           <Route path="/" element={<HomeWithMenu onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/catalog" element={<CourseCatalog onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId" element={<CoursePlayer onMenuClick={() => setMobileOpen(true)} />} />
-          <Route path="/course/:courseId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/course/:courseId/topic/:topicId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route
             path="/my-courses"
             element={
@@ -90,6 +92,30 @@ function AppShell() {
             element={
               <RequireRole allowed={["admin"]}>
                 <AdminCourses onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/courses/:courseId/manage"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <CourseManagePage onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/trainer/courses"
+            element={
+              <RequireRole allowed={["trainer"]}>
+                <TrainerCourses onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/trainer/courses/:courseId/manage"
+            element={
+              <RequireRole allowed={["trainer"]}>
+                <CourseManagePage onMenuClick={() => setMobileOpen(true)} />
               </RequireRole>
             }
           />

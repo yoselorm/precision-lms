@@ -9,25 +9,17 @@ const coursesSlice = createSlice({
   name: "courses",
   initialState,
   reducers: {
-    // Full course creation — used by the admin "Add course" form. Accepts a
-    // ready-built modules array (each with its own video/text content) and a
-    // chosen thumbnail, rather than auto-generating placeholders.
+    // Shell-only course creation — used by the admin and trainer "Add
+    // course" forms. Topics/lessons/quizzes are added afterward via the
+    // course-manage page. Admin-authored courses go live immediately;
+    // trainer-authored ones sit as "pending" until an admin approves them
+    // (mirrors how trainer signups themselves get approved).
     addCourse: {
       reducer(state, action) {
         state.courses.push(action.payload);
       },
-      prepare({ title, category, mandatory, durationMins, price, description, certificateTitle, thumbnailImage, modules, capstoneTitle, capstoneInstructions, quiz }) {
+      prepare({ title, category, mandatory, durationMins, price, description, certificateTitle, thumbnailImage, capstoneTitle, capstoneInstructions, creatorId, status }) {
         const id = `c-${nanoid(6)}`;
-        const builtModules = (modules && modules.length > 0 ? modules : [{ title: "Introduction", type: "video", durationMins: 10 }]).map(
-          (m, i) => ({
-            id: `${id}-m${i + 1}`,
-            title: m.title || `Topic ${i + 1}`,
-            type: m.type || "video",
-            durationMins: Number(m.durationMins) || 10,
-            videoUrl: m.type === "video" ? m.videoUrl || "" : undefined,
-            body: m.type === "reading" ? m.body || "" : undefined,
-          })
-        );
         return {
           payload: {
             id,
@@ -43,8 +35,9 @@ const coursesSlice = createSlice({
             certificate: certificateTitle ? { title: certificateTitle, issuer: "Learning & Development" } : null,
             capstone: capstoneTitle ? { title: capstoneTitle, instructions: capstoneInstructions || "" } : null,
             description: description || "",
-            modules: builtModules,
-            quiz: quiz && quiz.questions?.length ? quiz : { passingScore: quiz?.passingScore || 70, questions: [] },
+            topics: [],
+            createdBy: creatorId || null,
+            status: status || "approved",
           },
         };
       },
@@ -52,12 +45,12 @@ const coursesSlice = createSlice({
 
     // Bare-bones course, created inline from the "set up a class" flow when
     // there's no existing course to attach — materials get added afterward
-    // via addModuleToCourse.
+    // via the topic/lesson reducers below. Same approval rule as addCourse.
     createBlankCourse: {
       reducer(state, action) {
         state.courses.push(action.payload);
       },
-      prepare({ title, category, thumbnailImage }) {
+      prepare({ title, category, thumbnailImage, creatorId, status }) {
         const id = `c-${nanoid(6)}`;
         return {
           payload: {
@@ -74,40 +67,93 @@ const coursesSlice = createSlice({
             certificate: null,
             capstone: null,
             description: "",
-            modules: [],
-            quiz: { passingScore: 70, questions: [] },
+            topics: [],
+            createdBy: creatorId || null,
+            status: status || "approved",
           },
         };
       },
     },
 
-    // Trainer or admin adding a new topic (video or text) to a course that
-    // already exists — used both from Admin > Courses and from a trainer
-    // managing their class's materials.
-    addModuleToCourse: {
+    // Admin approves or denies a trainer-submitted course, controlling
+    // whether it's visible in the public course catalog.
+    setCourseStatus(state, action) {
+      const { courseId, status } = action.payload;
+      const course = state.courses.find((c) => c.id === courseId);
+      if (course) course.status = status;
+    },
+
+    // Trainer or admin adding a new topic to a course — used both from
+    // Admin > Courses manage page and from a trainer managing their class's
+    // materials.
+    addTopicToCourse: {
       reducer(state, action) {
-        const { courseId, module } = action.payload;
+        const { courseId, topic } = action.payload;
         const course = state.courses.find((c) => c.id === courseId);
         if (!course) return;
-        course.modules.push(module);
-        course.durationMins += module.durationMins;
+        course.topics.push(topic);
       },
-      prepare({ courseId, title, type, durationMins, videoUrl, body }) {
+      prepare({ courseId, title }) {
         return {
           payload: {
             courseId,
-            module: {
-              id: `${courseId}-m${nanoid(6)}`,
+            topic: {
+              id: `${courseId}-t${nanoid(6)}`,
               title,
-              type,
-              durationMins: Number(durationMins) || 10,
-              videoUrl: type === "video" ? videoUrl || "" : undefined,
-              body: type === "reading" ? body || "" : undefined,
+              lessons: [],
+              quiz: null,
             },
           },
         };
       },
     },
+
+    removeTopicFromCourse(state, action) {
+      const { courseId, topicId } = action.payload;
+      const course = state.courses.find((c) => c.id === courseId);
+      if (!course) return;
+      course.topics = course.topics.filter((t) => t.id !== topicId);
+    },
+
+    // Adds a video/text/document lesson to an existing topic.
+    addLessonToTopic: {
+      reducer(state, action) {
+        const { courseId, topicId, lesson } = action.payload;
+        const course = state.courses.find((c) => c.id === courseId);
+        const topic = course?.topics.find((t) => t.id === topicId);
+        if (!topic) return;
+        topic.lessons.push(lesson);
+        course.durationMins += lesson.durationMins;
+      },
+      prepare({ courseId, topicId, title, type, durationMins, videoUrl, body, fileUrl }) {
+        return {
+          payload: {
+            courseId,
+            topicId,
+            lesson: {
+              id: `${topicId}-l${nanoid(6)}`,
+              title,
+              type,
+              durationMins: Number(durationMins) || 10,
+              videoUrl: type === "video" ? videoUrl || "" : undefined,
+              body: type === "text" ? body || "" : undefined,
+              fileUrl: type === "document" ? fileUrl || "" : undefined,
+            },
+          },
+        };
+      },
+    },
+
+    removeLessonFromTopic(state, action) {
+      const { courseId, topicId, lessonId } = action.payload;
+      const course = state.courses.find((c) => c.id === courseId);
+      const topic = course?.topics.find((t) => t.id === topicId);
+      if (!topic) return;
+      const lesson = topic.lessons.find((l) => l.id === lessonId);
+      if (lesson) course.durationMins -= lesson.durationMins;
+      topic.lessons = topic.lessons.filter((l) => l.id !== lessonId);
+    },
+
     // Admin sets (or edits) the capstone project brief for an existing course.
     setCourseCapstone(state, action) {
       const { courseId, title, instructions } = action.payload;
@@ -115,14 +161,16 @@ const coursesSlice = createSlice({
       if (!course) return;
       course.capstone = title ? { title, instructions: instructions || "" } : null;
     },
-    // Admin/trainer authors or edits a course's quiz via QuizBuilder —
+
+    // Admin/trainer authors or edits a topic's quiz via QuizBuilder —
     // replaces the quiz wholesale since the builder always submits the full
     // working set of questions.
-    setCourseQuiz(state, action) {
-      const { courseId, passingScore, timeLimitMins, questions } = action.payload;
+    setTopicQuiz(state, action) {
+      const { courseId, topicId, passingScore, timeLimitMins, questions } = action.payload;
       const course = state.courses.find((c) => c.id === courseId);
-      if (!course) return;
-      course.quiz = {
+      const topic = course?.topics.find((t) => t.id === topicId);
+      if (!topic) return;
+      topic.quiz = {
         passingScore: Number(passingScore) || 70,
         timeLimitMins: Number(timeLimitMins) || null,
         questions: questions || [],
@@ -131,9 +179,27 @@ const coursesSlice = createSlice({
   },
 });
 
-export const { addCourse, createBlankCourse, addModuleToCourse, setCourseCapstone, setCourseQuiz } = coursesSlice.actions;
+export const {
+  addCourse,
+  createBlankCourse,
+  setCourseStatus,
+  addTopicToCourse,
+  removeTopicFromCourse,
+  addLessonToTopic,
+  removeLessonFromTopic,
+  setCourseCapstone,
+  setTopicQuiz,
+} = coursesSlice.actions;
 export default coursesSlice.reducer;
 
 export const selectAllCourses = (state) => state.courses.courses;
 export const selectCourseById = (state, courseId) =>
   state.courses.courses.find((c) => c.id === courseId);
+// The public-facing catalog only ever shows approved courses — trainer
+// submissions stay invisible to learners until an admin reviews them.
+export const selectPublicCourses = (state) =>
+  state.courses.courses.filter((c) => (c.status || "approved") === "approved");
+export const selectCoursesByCreator = (state, creatorId) =>
+  state.courses.courses.filter((c) => c.createdBy === creatorId);
+export const selectPendingCourses = (state) =>
+  state.courses.courses.filter((c) => c.status === "pending");

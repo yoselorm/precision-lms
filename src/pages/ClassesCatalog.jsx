@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { CalendarDays, Users, GraduationCap, Settings2 } from "lucide-react";
+import { CalendarDays, Users, GraduationCap, Settings2, CheckCircle2, Plus } from "lucide-react";
 import Header from "../components/Header";
+import ClassFormModal from "../components/ClassFormModal";
 import { selectAllClasses } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
@@ -17,13 +18,13 @@ const STATUS_STYLES = {
 const HEADER_META = {
   admin: { title: "Classes", subtitle: "Every scheduled cohort across the org." },
   trainer: { title: "My Classes", subtitle: "The cohorts you're teaching." },
-  learner: { title: "My Classes", subtitle: "The cohorts you're enrolled in." },
+  learner: { title: "Classes", subtitle: "Browse a cohort and enroll yourself — no admin sign-off needed." },
 };
 
 const EMPTY_MESSAGE = {
   admin: "No classes scheduled yet.",
   trainer: "You're not teaching any classes yet.",
-  learner: "You're not enrolled in any classes yet.",
+  learner: "No classes scheduled yet.",
 };
 
 export default function ClassesCatalog({ onMenuClick }) {
@@ -32,17 +33,14 @@ export default function ClassesCatalog({ onMenuClick }) {
   const courses = useSelector(selectAllCourses);
   const users = useSelector(selectAllUsers);
   const currentUser = useSelector(selectCurrentUser);
+  const [showForm, setShowForm] = useState(false);
+  const canCreate = currentUser.role === "admin" || currentUser.role === "trainer";
 
-  // Admins see the whole org's cohorts; trainers only the ones they teach;
-  // learners only the ones they're enrolled in — there's no self-service way
-  // to join a class in this app, membership is always assigned, so a
-  // learner/trainer browsing everyone else's classes has no real use here.
-  const classes =
-    currentUser.role === "admin"
-      ? allClasses
-      : currentUser.role === "trainer"
-      ? allClasses.filter((c) => c.trainerId === currentUser.id)
-      : allClasses.filter((c) => c.memberIds.includes(currentUser.id));
+  // Admins see the whole org's cohorts; trainers only the ones they teach.
+  // Learners now see the full browsable list too — enrollment is
+  // self-service (see ClassDetailPage), so there's no "mine only" filter to
+  // apply here the way there is for a trainer's own teaching load.
+  const classes = currentUser.role === "trainer" ? allClasses.filter((c) => c.trainerId === currentUser.id) : allClasses;
 
   const { title, subtitle } = HEADER_META[currentUser.role] ?? HEADER_META.admin;
 
@@ -50,14 +48,29 @@ export default function ClassesCatalog({ onMenuClick }) {
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
       <Header title={title} subtitle={subtitle} onMenuClick={onMenuClick} />
 
+      {canCreate && (
+        <div className="flex justify-end px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8">
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
+          >
+            <Plus size={14} /> {currentUser.role === "trainer" ? "Set up a class" : "Add class"}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:p-8">
         {classes.map((cls) => {
-          const course = courses.find((c) => c.id === cls.courseId);
+          const classCourses = (cls.courses || []).map((cc) => courses.find((c) => c.id === cc.courseId)).filter(Boolean);
+          const courseSummary =
+            classCourses.length === 0
+              ? "No courses attached"
+              : classCourses.length === 1
+              ? classCourses[0].title
+              : `${classCourses[0].title} +${classCourses.length - 1} more`;
           const trainer = users.find((u) => u.id === cls.trainerId);
           const members = users.filter((u) => cls.memberIds.includes(u.id));
-          // Membership highlighting only adds signal in the admin's org-wide
-          // list — trainers/learners are already looking at just their own.
-          const isMember = currentUser.role === "admin" && cls.memberIds.includes(currentUser.id);
+          const isMember = cls.memberIds.includes(currentUser.id);
 
           return (
             <div
@@ -71,13 +84,22 @@ export default function ClassesCatalog({ onMenuClick }) {
                 <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${STATUS_STYLES[cls.status]}`}>
                   {cls.status}
                 </span>
-                {isMember && (
-                  <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">You're enrolled</span>
+                {isMember ? (
+                  <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">
+                    <CheckCircle2 size={11} /> Enrolled
+                  </span>
+                ) : (
+                  currentUser.role === "learner" &&
+                  cls.status !== "completed" && (
+                    <span className="rounded-full border border-stone-200 px-2 py-0.5 text-[10px] font-semibold text-stone-400">
+                      Open to join
+                    </span>
+                  )
                 )}
               </div>
 
               <h3 className="text-sm font-bold text-stone-900 leading-snug">{cls.title}</h3>
-              <p className="mt-0.5 text-xs text-stone-500">{course?.title}</p>
+              <p className="mt-0.5 text-xs text-stone-500">{courseSummary}</p>
 
               <div className="mt-3 space-y-1.5 text-xs text-stone-500">
                 <p className="flex items-center gap-1.5">
@@ -123,6 +145,8 @@ export default function ClassesCatalog({ onMenuClick }) {
           <p className="text-sm text-stone-400">{EMPTY_MESSAGE[currentUser.role] ?? EMPTY_MESSAGE.admin}</p>
         )}
       </div>
+
+      {showForm && <ClassFormModal onClose={() => setShowForm(false)} />}
     </div>
   );
 }

@@ -62,13 +62,14 @@ export default function AdminDashboard({ onMenuClick }) {
     .slice(0, 5);
 
   const classRows = classes.map((cls) => {
-    const course = courses.find((c) => c.id === cls.courseId);
+    const classCourseIds = (cls.courses || []).map((c) => c.courseId);
+    const classCourses = classCourseIds.map((id) => courses.find((c) => c.id === id)).filter(Boolean);
     const trainer = users.find((u) => u.id === cls.trainerId);
-    const memberEnrollments = enrollments.filter((e) => e.courseId === cls.courseId && cls.memberIds.includes(e.userId));
+    const memberEnrollments = enrollments.filter((e) => classCourseIds.includes(e.courseId) && cls.memberIds.includes(e.userId));
     const avgProgress = memberEnrollments.length
       ? Math.round(memberEnrollments.reduce((sum, e) => sum + e.progress, 0) / memberEnrollments.length)
       : 0;
-    return { cls, course, trainer, avgProgress };
+    return { cls, classCourses, trainer, avgProgress };
   });
 
   return (
@@ -130,11 +131,17 @@ export default function AdminDashboard({ onMenuClick }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {classRows.map(({ cls, course, trainer, avgProgress }) => (
+                    {classRows.map(({ cls, classCourses, trainer, avgProgress }) => (
                       <tr key={cls.id}>
                         <td className="py-2.5 pr-2">
                           <p className="font-semibold text-stone-800">{cls.title}</p>
-                          <p className="text-[10px] text-stone-400">{course?.title}</p>
+                          <p className="text-[10px] text-stone-400">
+                            {classCourses.length === 0
+                              ? "No course attached"
+                              : classCourses.length === 1
+                              ? classCourses[0].title
+                              : `${classCourses[0].title} +${classCourses.length - 1} more`}
+                          </p>
                         </td>
                         <td className="py-2.5 pr-2 text-stone-500">{trainer?.name ?? "—"}</td>
                         <td className="py-2.5 pr-2">
