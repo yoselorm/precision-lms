@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import CourseCard from "../components/CourseCard";
 import { selectPublicCourses } from "../store/slices/coursesSlice";
+import { selectCategories } from "../store/slices/categoriesSlice";
 import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
@@ -134,6 +135,7 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const courses = useSelector(selectPublicCourses);
+  const categoryList = useSelector(selectCategories);
   const trainers = useSelector(selectApprovedTrainers);
 
   const categories = useMemo(() => {
@@ -361,6 +363,8 @@ export default function LandingPage() {
             {categories.map(({ name, count }) => {
               const meta = CATEGORY_META[name] || { icon: BookOpen, blurb: "Practical courses to grow your skills." };
               const Icon = meta.icon;
+              // Admin-written description (Admin → Categories) wins over the built-in blurb.
+              const blurb = categoryList.find((c) => c.name === name)?.description || meta.blurb;
               return (
                 <button
                   key={name}
@@ -371,7 +375,7 @@ export default function LandingPage() {
                     <Icon size={30} strokeWidth={1.6} />
                   </span>
                   <h3 className="text-lg font-bold text-stone-900 group-hover:text-white">{name}</h3>
-                  <p className="text-xs leading-relaxed text-stone-500 group-hover:text-brand-100">{meta.blurb}</p>
+                  <p className="text-xs leading-relaxed text-stone-500 group-hover:text-brand-100">{blurb}</p>
                   <span className="mt-1 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-brand-700 group-hover:bg-white/15 group-hover:text-white">
                     {count} {count === 1 ? "course" : "courses"}
                   </span>

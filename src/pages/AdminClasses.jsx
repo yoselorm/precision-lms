@@ -46,6 +46,7 @@ export default function AdminClasses({ onMenuClick }) {
                 className="cursor-pointer rounded-2xl border border-stone-200 bg-white p-5 transition hover:shadow-md"
               >
                 <h3 className="text-sm font-bold text-stone-900">{cls.title}</h3>
+                {cls.description && <p className="mt-1 line-clamp-2 text-xs text-stone-500">{cls.description}</p>}
                 <p className="mt-0.5 text-xs text-stone-500">{courseSummary}</p>
                 <div className="mt-3 space-y-1.5 text-xs text-stone-500">
                   <p className="flex items-center gap-1.5">

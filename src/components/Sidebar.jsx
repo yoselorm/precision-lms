@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Award,
   HelpCircle,
+  Tags,
   FileText,
   CalendarDays,
   ChevronDown,
@@ -36,6 +37,7 @@ const baseLinks = [
 const adminLinks = [
   { to: "/admin", label: "Overview", icon: ShieldCheck },
   { to: "/admin/courses", label: "Courses", icon: BookOpen },
+  { to: "/admin/categories", label: "Categories", icon: Tags },
   { to: "/admin/users", label: "Users", icon: UserPlus },
   { to: "/admin/classes", label: "Classes", icon: CalendarDays },
   { to: "/admin/certificates", label: "Certificates", icon: Award },

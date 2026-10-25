@@ -8,6 +8,7 @@ import assignmentsReducer from "./slices/assignmentsSlice";
 import submissionsReducer from "./slices/submissionsSlice";
 import commentsReducer from "./slices/commentsSlice";
 import uiReducer from "./slices/uiSlice";
+import categoriesReducer from "./slices/categoriesSlice";
 import { loadState, saveState, debounce } from "../utils/persistence";
 
 export const store = configureStore({
@@ -20,6 +21,7 @@ export const store = configureStore({
     assignments: assignmentsReducer,
     submissions: submissionsReducer,
     comments: commentsReducer,
+    categories: categoriesReducer,
     ui: uiReducer,
   },
   preloadedState: loadState(),

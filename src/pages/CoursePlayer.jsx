@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, Lock, Tag, ExternalLink, Layers, Clock, Award, Eye } from "lucide-react";
+import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye } from "lucide-react";
 import { selectCourseById } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAssignmentsByCourse } from "../store/slices/assignmentsSlice";
@@ -10,6 +10,8 @@ import { pushToast } from "../store/slices/uiSlice";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
 import QuizPreview from "../components/QuizPreview";
+import { RichText } from "../components/RichTextEditor";
+import { formatFileSize } from "../components/LessonListEditor";
 import TopicComments from "../components/TopicComments";
 
 const LESSON_ICONS = { video: PlayCircle, text: FileText, document: File };
@@ -200,6 +202,7 @@ export default function CoursePlayer({ onMenuClick }) {
                 {activeLesson.type === "video" ? "Video" : activeLesson.type === "document" ? "Document" : "Reading"}
               </span>
               <h1 className="text-xl font-bold text-stone-900">{activeLesson.title}</h1>
+              {activeLesson.description && <p className="mt-1 text-sm text-stone-500">{activeLesson.description}</p>}
             </div>
 
             {activeLesson.type === "video" ? (
@@ -235,6 +238,31 @@ export default function CoursePlayer({ onMenuClick }) {
               <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm leading-relaxed text-stone-600">
                 Placeholder reading content for "{activeLesson.title}" goes here — this is where the real
                 article, PDF viewer, or embedded document would render.
+              </div>
+            )}
+
+            {activeLesson.resources?.length > 0 && (
+              <div className="rounded-xl border border-stone-200 bg-white p-4">
+                <h2 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-stone-400">
+                  <Paperclip size={12} /> Resources
+                </h2>
+                <ul className="space-y-1.5">
+                  {activeLesson.resources.map((r, i) => (
+                    <li key={`${r.url}-${i}`}>
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={r.name}
+                        className="flex items-center gap-2 rounded-lg bg-stone-50 px-3 py-2 text-xs font-medium text-stone-700 hover:bg-brand-50 hover:text-brand-800"
+                      >
+                        <Download size={13} className="shrink-0 text-brand-700" />
+                        <span className="flex-1 truncate">{r.name}</span>
+                        {r.size > 0 && <span className="shrink-0 text-[10px] text-stone-400">{formatFileSize(r.size)}</span>}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -300,7 +328,13 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-              <img src={course.thumbnailImage} alt={course.title} className="h-48 w-full object-cover sm:h-60" />
+              {course.demoVideoUrl ? (
+                <video controls poster={course.thumbnailImage} className="aspect-video w-full bg-stone-900">
+                  <source src={course.demoVideoUrl} />
+                </video>
+              ) : (
+                <img src={course.thumbnailImage} alt={course.title} className="h-48 w-full object-cover sm:h-60" />
+              )}
               <div className="p-5 sm:p-6">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{course.category}</span>
                 <h1 className="mt-1 text-xl font-bold text-stone-900 sm:text-2xl">{course.title}</h1>
@@ -320,9 +354,11 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
                   )}
                 </div>
                 <h2 className="mt-5 text-sm font-bold text-stone-800">About this course</h2>
-                <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-stone-600">
-                  {course.description || "No description has been added for this course yet."}
-                </p>
+                {course.description ? (
+                  <RichText html={course.description} className="mt-1.5 text-sm leading-relaxed text-stone-600" />
+                ) : (
+                  <p className="mt-1.5 text-sm text-stone-400">No description has been added for this course yet.</p>
+                )}
               </div>
             </div>
 
@@ -335,7 +371,10 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-xs font-bold text-brand-700">
                       {i + 1}
                     </span>
-                    <p className="min-w-0 flex-1 text-sm font-semibold text-stone-800">{topic.title}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-stone-800">{topic.title}</p>
+                      {topic.description && <p className="mt-0.5 text-xs text-stone-500">{topic.description}</p>}
+                    </div>
                     <Lock size={13} className="shrink-0 text-stone-300" />
                   </li>
                 ))}

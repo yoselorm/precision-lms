@@ -20,6 +20,7 @@ import AdminEnroll from "./pages/AdminEnroll";
 import ClassesCatalog from "./pages/ClassesCatalog";
 import CertificatesPage from "./pages/CertificatesPage";
 import AdminCertificates from "./pages/AdminCertificates";
+import AdminCategories from "./pages/AdminCategories";
 import CertificateDesigner from "./pages/CertificateDesigner";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import ClassMaterialsPage from "./pages/ClassMaterialsPage";
@@ -145,6 +146,14 @@ function AppShell() {
             element={
               <RequireRole allowed={["admin"]}>
                 <AdminCertificates onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/categories"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <AdminCategories onMenuClick={() => setMobileOpen(true)} />
               </RequireRole>
             }
           />

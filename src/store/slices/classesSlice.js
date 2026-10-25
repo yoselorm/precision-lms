@@ -19,11 +19,12 @@ const classesSlice = createSlice({
       reducer(state, action) {
         state.classes.push(action.payload);
       },
-      prepare({ title, courses, trainerId, startDate, endDate }) {
+      prepare({ title, description, courses, trainerId, startDate, endDate }) {
         return {
           payload: {
             id: `cls-${nanoid(6)}`,
             title,
+            description: description?.trim() || "",
             courses: courses || [],
             trainerId,
             // Rosters are built by students enrolling themselves, not set by

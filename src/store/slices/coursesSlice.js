@@ -1,4 +1,5 @@
 import { createSlice, current, nanoid } from "@reduxjs/toolkit";
+import { renameCategory } from "./categoriesSlice";
 import { mockCourses } from "../../data/mockData";
 
 // When a trainer edits a course that's already live, their changes go into a
@@ -32,15 +33,17 @@ const coursesSlice = createSlice({
       reducer(state, action) {
         state.courses.push(action.payload);
       },
-      prepare({ title, category, mandatory, durationMins, price, description, certificateTitle, thumbnailImage, creatorId, status }) {
+      // Duration isn't entered — it's the sum of the lessons' durations,
+      // kept up to date as lessons are added. `description` is rich-text HTML.
+      prepare({ title, category, price, description, certificateTitle, thumbnailImage, demoVideoUrl, creatorId, status }) {
         const id = `c-${nanoid(6)}`;
         return {
           payload: {
             id,
             title,
             category,
-            mandatory: !!mandatory,
-            durationMins: Number(durationMins) || 30,
+            durationMins: 0,
+            demoVideoUrl: demoVideoUrl || "",
             thumbnailColor: "#0f766e",
             thumbnailImage: thumbnailImage || `https://picsum.photos/seed/${id}/480/300`,
             studentsCount: 0,
@@ -70,7 +73,6 @@ const coursesSlice = createSlice({
             id,
             title,
             category: category || "Technical Skills",
-            mandatory: false,
             durationMins: 0,
             thumbnailColor: "#0f766e",
             thumbnailImage: thumbnailImage || `https://picsum.photos/seed/${id}/480/300`,
@@ -85,6 +87,13 @@ const coursesSlice = createSlice({
           },
         };
       },
+    },
+
+    // Admin assigns (or reassigns) the trainer who builds a course — for
+    // courses an admin created without choosing a trainer yet.
+    setCourseOwner(state, action) {
+      const course = state.courses.find((c) => c.id === action.payload.courseId);
+      if (course) course.createdBy = action.payload.trainerId || null;
     },
 
     // Trainer deletes their own course before it's published (draft, pending
@@ -117,7 +126,7 @@ const coursesSlice = createSlice({
         if (!course) return;
         topicsToEdit(course, revision).push(topic);
       },
-      prepare({ courseId, title, revision }) {
+      prepare({ courseId, title, description, revision }) {
         return {
           payload: {
             courseId,
@@ -125,6 +134,7 @@ const coursesSlice = createSlice({
             topic: {
               id: `${courseId}-t${nanoid(6)}`,
               title,
+              description: description?.trim() || "",
               lessons: [],
               quiz: null,
             },
@@ -151,7 +161,8 @@ const coursesSlice = createSlice({
         topic.lessons.push(lesson);
         if (!revision) course.durationMins += lesson.durationMins;
       },
-      prepare({ courseId, topicId, title, type, durationMins, videoUrl, body, fileUrl, revision }) {
+      // `resources` are extra downloads (PDFs, docs, zips…): { name, url, size }.
+      prepare({ courseId, topicId, title, description, type, durationMins, videoUrl, body, fileUrl, resources, revision }) {
         return {
           payload: {
             courseId,
@@ -160,11 +171,13 @@ const coursesSlice = createSlice({
             lesson: {
               id: `${topicId}-l${nanoid(6)}`,
               title,
+              description: description?.trim() || "",
               type,
               durationMins: Number(durationMins) || 10,
               videoUrl: type === "video" ? videoUrl || "" : undefined,
               body: type === "text" ? body || "" : undefined,
               fileUrl: type === "document" ? fileUrl || "" : undefined,
+              resources: resources || [],
             },
           },
         };
@@ -244,6 +257,15 @@ const coursesSlice = createSlice({
       }
     },
   },
+  extraReducers: (builder) => {
+    // Courses store their category by name, so follow admin renames.
+    builder.addCase(renameCategory, (state, action) => {
+      const { previousName, name } = action.payload;
+      state.courses.forEach((c) => {
+        if (c.category === previousName) c.category = name.trim();
+      });
+    });
+  },
 });
 
 export const {
@@ -251,6 +273,7 @@ export const {
   createBlankCourse,
   setCourseStatus,
   removeCourse,
+  setCourseOwner,
   addTopicToCourse,
   removeTopicFromCourse,
   addLessonToTopic,

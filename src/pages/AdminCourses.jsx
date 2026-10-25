@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Plus, Layers, Eye, Check, Ban, Clock, X } from "lucide-react";
+import { Plus, Layers, Eye, Check, Ban, Clock, X, UserPlus, GraduationCap } from "lucide-react";
 import Header from "../components/Header";
 import CourseFormModal from "../components/CourseFormModal";
-import { selectAllCourses, setCourseStatus, reviewCourseUpdate } from "../store/slices/coursesSlice";
+import { selectAllCourses, setCourseStatus, reviewCourseUpdate, setCourseOwner } from "../store/slices/coursesSlice";
+import { selectAllUsers, selectApprovedTrainers } from "../store/slices/usersSlice";
+import { useConfirm } from "../components/ConfirmDialog";
 import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "../components/ModalOverlay";
 
@@ -68,6 +70,69 @@ function DenyCourseModal({ course, isUpdate = false, onDeny, onClose }) {
   );
 }
 
+// Picks the trainer who will build a course (for courses created without
+// one, or to hand a course to someone else).
+function AssignTrainerModal({ course, onClose }) {
+  const dispatch = useDispatch();
+  const trainers = useSelector(selectApprovedTrainers);
+  const [trainerId, setTrainerId] = useState(course.createdBy || trainers[0]?.id || "");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!trainerId) return;
+    const trainer = trainers.find((t) => t.id === trainerId);
+    dispatch(setCourseOwner({ courseId: course.id, trainerId }));
+    dispatch(pushToast({ type: "success", message: `"${course.title}" is now assigned to ${trainer?.name}.` }));
+    onClose();
+  };
+
+  return (
+    <ModalOverlay>
+      <form onSubmit={handleSubmit} className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-base font-bold text-stone-900">Assign a trainer</h2>
+          <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-stone-500">"{course.title}" — the trainer builds its content and submits it for your approval.</p>
+        {trainers.length === 0 ? (
+          <p className="text-sm text-rose-600">There are no approved trainers yet — approve or add one under Users first.</p>
+        ) : (
+          <>
+            <label className="mb-1 block text-xs font-semibold text-stone-600">
+              Trainer <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={trainerId}
+              onChange={(e) => setTrainerId(e.target.value)}
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+            >
+              {trainers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!trainerId}
+            className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Assign trainer
+          </button>
+        </div>
+      </form>
+    </ModalOverlay>
+  );
+}
+
 export default function AdminCourses({ onMenuClick }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -75,6 +140,9 @@ export default function AdminCourses({ onMenuClick }) {
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
   const [denying, setDenying] = useState(null);
+  const [assigning, setAssigning] = useState(null);
+  const confirm = useConfirm();
+  const users = useSelector(selectAllUsers);
 
   const awaitingReview = (c) => c.status === "pending" || c.revision?.status === "pending";
   const pendingCount = courses.filter(awaitingReview).length;
@@ -88,6 +156,27 @@ export default function AdminCourses({ onMenuClick }) {
         message: approve ? `The update to "${course.title}" is now live.` : `The update to "${course.title}" was denied.`,
       })
     );
+  };
+
+  const approveCourse = async (course) => {
+    const wasDenied = course.status === "denied";
+    const ok = await confirm({
+      title: `Approve "${course.title}"?`,
+      message: wasDenied
+        ? "This course was denied earlier. Approving it publishes it to the catalog as it is now."
+        : "It will be published to the course catalog, where learners can find and enroll in it.",
+      confirmLabel: wasDenied ? "Approve anyway" : "Approve & publish",
+    });
+    if (ok) handleStatusChange(course, "approved");
+  };
+
+  const approveUpdate = async (course) => {
+    const ok = await confirm({
+      title: `Approve the update to "${course.title}"?`,
+      message: "The trainer's changes will replace the live version that learners see.",
+      confirmLabel: "Approve update",
+    });
+    if (ok) handleUpdateReview(course, true);
   };
 
   const handleStatusChange = (course, status, reason) => {
@@ -151,15 +240,20 @@ export default function AdminCourses({ onMenuClick }) {
               {filtered.map((c) => {
                 const quizCount = c.topics.filter((t) => t.quiz?.questions?.length).length;
                 const status = c.status || "approved";
+                const owner = users.find((u) => u.id === c.createdBy);
                 return (
                   <tr key={c.id}>
                     <td className="flex items-center gap-2.5 px-4 py-3 font-semibold text-stone-800">
                       <img src={c.thumbnailImage} alt="" className="h-8 w-12 shrink-0 rounded object-cover" />
                       <span>
                         {c.title}
-                        {c.mandatory && (
-                          <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
-                            Mandatory
+                        {owner ? (
+                          <span className="mt-0.5 flex items-center gap-1 text-[10px] font-normal text-stone-400">
+                            <GraduationCap size={10} /> {owner.name}
+                          </span>
+                        ) : (
+                          <span className="mt-0.5 flex w-fit items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                            No trainer assigned
                           </span>
                         )}
                       </span>
@@ -197,7 +291,7 @@ export default function AdminCourses({ onMenuClick }) {
                         {status === "pending" && (
                           <>
                             <button
-                              onClick={() => handleStatusChange(c, "approved")}
+                              onClick={() => approveCourse(c)}
                               className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
                             >
                               <Check size={11} /> Approve
@@ -213,7 +307,7 @@ export default function AdminCourses({ onMenuClick }) {
                         {c.revision?.status === "pending" && (
                           <>
                             <button
-                              onClick={() => handleUpdateReview(c, true)}
+                              onClick={() => approveUpdate(c)}
                               className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
                             >
                               <Check size={11} /> Approve update
@@ -228,10 +322,18 @@ export default function AdminCourses({ onMenuClick }) {
                         )}
                         {status === "denied" && (
                           <button
-                            onClick={() => handleStatusChange(c, "approved")}
+                            onClick={() => approveCourse(c)}
                             className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
                           >
                             <Check size={11} /> Approve anyway
+                          </button>
+                        )}
+                        {(!c.createdBy || status === "draft") && (
+                          <button
+                            onClick={() => setAssigning(c)}
+                            className="flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-[10px] font-semibold text-brand-800 hover:bg-brand-100"
+                          >
+                            <UserPlus size={11} /> {c.createdBy ? "Reassign trainer" : "Assign trainer"}
                           </button>
                         )}
                         <button
@@ -254,6 +356,7 @@ export default function AdminCourses({ onMenuClick }) {
       {showForm && (
         <CourseFormModal onClose={() => setShowForm(false)} onCreated={(courseId) => navigate(`/admin/courses/${courseId}/manage`)} />
       )}
+      {assigning && <AssignTrainerModal course={assigning} onClose={() => setAssigning(null)} />}
       {denying && (
         <DenyCourseModal
           course={denying.course}

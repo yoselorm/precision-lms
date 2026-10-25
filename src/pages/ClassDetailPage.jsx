@@ -166,6 +166,7 @@ export default function ClassDetailPage({ onMenuClick }) {
                 {isMember && <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-700">You're enrolled</span>}
               </div>
               <h2 className="truncate text-base font-bold text-stone-900">{cls.title}</h2>
+              {cls.description && <p className="mt-1 whitespace-pre-line text-sm text-stone-600">{cls.description}</p>}
               <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
                 <span className="flex items-center gap-1">
                   <CalendarDays size={12} /> {cls.startDate} — {cls.endDate}

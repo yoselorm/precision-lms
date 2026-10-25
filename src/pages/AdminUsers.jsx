@@ -5,6 +5,7 @@ import Header from "../components/Header";
 import { selectAllUsers, addUser, setUserStatus, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "../components/ModalOverlay";
+import { useConfirm } from "../components/ConfirmDialog";
 
 const ROLES = ["learner", "admin", "trainer"];
 
@@ -158,6 +159,7 @@ export default function AdminUsers({ onMenuClick }) {
   const users = useSelector(selectAllUsers);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
+  const confirm = useConfirm();
 
   const pendingCount = users.filter((u) => u.status === "pending").length;
 
@@ -167,7 +169,18 @@ export default function AdminUsers({ onMenuClick }) {
     return users.filter((u) => u.role === filter);
   }, [users, filter]);
 
-  const handleStatusChange = (user, status) => {
+  const handleStatusChange = async (user, status) => {
+    if (status === "approved") {
+      const ok = await confirm({
+        title: `Approve ${user.name}?`,
+        message:
+          user.status === "denied"
+            ? "They were denied earlier. Approving gives them trainer access to create courses and run classes."
+            : "They'll get trainer access to create courses and run classes.",
+        confirmLabel: "Approve trainer",
+      });
+      if (!ok) return;
+    }
     dispatch(setUserStatus({ userId: user.id, status }));
     dispatch(
       pushToast({

@@ -49,7 +49,6 @@ export const mockCourses = [
     id: "c1",
     title: "Workplace Data Protection & Privacy",
     category: "Compliance",
-    mandatory: true,
     durationMins: 45,
     thumbnailColor: "#dc2626",
     thumbnailImage: "https://picsum.photos/seed/data-privacy-course/480/300",
@@ -254,7 +253,6 @@ export const mockCourses = [
     id: "c2",
     title: "Leading High-Performing Teams",
     category: "Leadership",
-    mandatory: false,
     durationMins: 90,
     thumbnailColor: "#2563eb",
     thumbnailImage: "https://picsum.photos/seed/leadership-course/480/300",
@@ -463,7 +461,6 @@ export const mockCourses = [
     id: "c3",
     title: "New Hire Onboarding Essentials",
     category: "Onboarding",
-    mandatory: true,
     durationMins: 60,
     thumbnailColor: "#16a34a",
     thumbnailImage: "https://picsum.photos/seed/onboarding-course/480/300",
@@ -665,7 +662,6 @@ export const mockCourses = [
     id: "c4",
     title: "Workplace Health & Safety Refresher",
     category: "Compliance",
-    mandatory: true,
     durationMins: 30,
     thumbnailColor: "#dc2626",
     thumbnailImage: "https://picsum.photos/seed/safety-course/480/300",
@@ -848,7 +844,6 @@ export const mockCourses = [
     id: "c5",
     title: "Excel for Reporting & Dashboards",
     category: "Technical Skills",
-    mandatory: false,
     durationMins: 120,
     thumbnailColor: "#9333ea",
     thumbnailImage: "https://picsum.photos/seed/excel-course/480/300",
@@ -1052,7 +1047,6 @@ export const mockCourses = [
     id: "c6",
     title: "Anti-Harassment & Respectful Workplace",
     category: "Compliance",
-    mandatory: true,
     durationMins: 40,
     thumbnailColor: "#dc2626",
     thumbnailImage: "https://picsum.photos/seed/respect-course/480/300",
@@ -1237,7 +1231,6 @@ export const mockCourses = [
     id: "c7",
     title: "Effective Client Communication",
     category: "Sales",
-    mandatory: false,
     durationMins: 75,
     thumbnailColor: "#0891b2",
     thumbnailImage: "https://picsum.photos/seed/client-comms-course/480/300",
@@ -1439,7 +1432,6 @@ export const mockCourses = [
     id: "c8",
     title: "Introduction to Project Management",
     category: "Technical Skills",
-    mandatory: false,
     durationMins: 100,
     thumbnailColor: "#db2777",
     thumbnailImage: "https://picsum.photos/seed/pm-course/480/300",
@@ -1874,6 +1866,17 @@ export const mockClasses = [
     endDate: "2026-09-24",
     status: "upcoming",
   },
+];
+
+// Course categories — managed by admins (Admin → Categories); the course
+// form picks from this list.
+export const mockCategories = [
+  { id: "cat-compliance", name: "Compliance", description: "Policies, safety and data protection every team member needs." },
+  { id: "cat-leadership", name: "Leadership", description: "Lead teams, give feedback and run effective field operations." },
+  { id: "cat-onboarding", name: "Onboarding", description: "Everything new staff need to hit the ground running." },
+  { id: "cat-technical", name: "Technical Skills", description: "Data, reporting and digital tools for modern public health." },
+  { id: "cat-sales", name: "Sales", description: "Communicate value and build lasting partnerships." },
+  { id: "cat-marketing", name: "Marketing", description: "Reach the right audiences and tell the story of your work." },
 ];
 
 // Assignments belong to either a class (classId — only that cohort gets it)

@@ -38,8 +38,8 @@ export default function AdminDashboard({ onMenuClick }) {
     return sum + (course?.price || 0);
   }, 0);
 
-  const mandatoryCourses = courses.filter((c) => c.mandatory);
-  const complianceByCourse = mandatoryCourses.map((course) => {
+  const publishedCourses = courses.filter((c) => (c.status || "approved") === "approved");
+  const completionByCourse = publishedCourses.map((course) => {
     const relevant = enrollments.filter((e) => e.courseId === course.id);
     const completed = relevant.filter((e) => e.status === "completed").length;
     const rate = relevant.length ? Math.round((completed / relevant.length) * 100) : 0;
@@ -81,11 +81,11 @@ export default function AdminDashboard({ onMenuClick }) {
             <div className="rounded-2xl border border-stone-200 bg-white p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="flex items-center gap-1.5 text-sm font-bold text-stone-800">
-                  <ShieldCheck size={15} className="text-emerald-700" /> Mandatory course compliance
+                  <ShieldCheck size={15} className="text-emerald-700" /> Course completion
                 </h2>
               </div>
               <div className="space-y-4">
-                {complianceByCourse.map(({ course, completed, total, rate }) => (
+                {completionByCourse.map(({ course, completed, total, rate }) => (
                   <div key={course.id}>
                     <div className="mb-1 flex items-center justify-between text-xs">
                       <span className="font-semibold text-stone-700">{course.title}</span>

@@ -32,9 +32,6 @@ export default function CourseCard({ course, enrollment }) {
               {course.price > 0 ? `GH₵${course.price}` : "Free"}
             </span>
           </div>
-          {course.mandatory && (
-            <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-amber-950">Mandatory</span>
-          )}
         </div>
         <div className="absolute -bottom-5 left-3 rounded-full bg-white p-0.5 shadow-md">
           <CircularProgress value={progress} size={42} strokeWidth={4} color={ringColor} />

@@ -25,6 +25,7 @@ export default function ClassFormModal({ onClose }) {
 
   const [form, setForm] = useState({
     title: "",
+    description: "",
     courses: [], // [{ courseId, mandatory }]
     trainerId: isTrainer ? currentUser.id : trainers[0]?.id ?? "",
     startDate: "",
@@ -76,6 +77,19 @@ export default function ClassFormModal({ onClose }) {
               onChange={(e) => update("title", e.target.value)}
               required
               placeholder="e.g. Leadership Cohort — Sept 2026"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-stone-600">
+              Description <span className="font-normal text-stone-400">(optional)</span>
+            </label>
+            <textarea
+              value={form.description}
+              onChange={(e) => update("description", e.target.value)}
+              rows={3}
+              placeholder="Who this class is for, what it covers, and how sessions run"
               className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
             />
           </div>
