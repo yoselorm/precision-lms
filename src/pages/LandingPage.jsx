@@ -509,7 +509,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA ──────────────────────────────────────────── */}
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-8">
+      <section className="mx-auto max-w-7xl px-4 pb-20 pt-16 sm:px-8">
         <div className="relative flex flex-col items-start justify-between gap-6 overflow-hidden rounded-3xl bg-brand-700 px-6 py-10 sm:px-12 md:flex-row md:items-center">
           <div style={HATCH} className="absolute -bottom-16 -right-10 h-48 w-48 rounded-full" />
           <h2 className="relative max-w-xl text-xl font-bold leading-snug text-white sm:text-2xl">
