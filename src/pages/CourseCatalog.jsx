@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
+import { useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import Header from "../components/Header";
 import CourseCard from "../components/CourseCard";
@@ -17,7 +18,9 @@ export default function CourseCatalog({ onMenuClick }) {
   const enrollmentByCourseId = Object.fromEntries(enrollments.map((e) => [e.courseId, e]));
 
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
+  // The landing page links straight into a category via ?category=…
+  const [searchParams] = useSearchParams();
+  const [category, setCategory] = useState(searchParams.get("category") || "All");
 
   const categories = useMemo(() => ["All", ...new Set(courses.map((c) => c.category))], [courses]);
 

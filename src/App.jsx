@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import Sidebar from "./components/Sidebar";
 import PublicShell from "./components/PublicShell";
 import LoginPage from "./pages/LoginPage";
+import LandingPage from "./pages/LandingPage";
 import PendingApprovalPage from "./pages/PendingApprovalPage";
 import LearnerDashboard from "./pages/LearnerDashboard";
 import CourseCatalog from "./pages/CourseCatalog";
@@ -157,15 +158,15 @@ function HomeWithMenu({ onMenuClick }) {
   return <LearnerDashboard onMenuClick={onMenuClick} />;
 }
 
-// Anonymous visitors only ever see the public catalog + a course's
-// sign-in gate — everything else redirects back to the catalog.
+// Anonymous visitors only ever see the landing page, the public catalog and
+// a course's sign-in gate — everything else redirects back to the landing page.
 function PublicRoutes() {
   return (
     <PublicShell>
       <Routes>
         <Route path="/catalog" element={<CourseCatalog />} />
         <Route path="/course/:courseId" element={<CoursePlayer />} />
-        <Route path="*" element={<Navigate to="/catalog" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PublicShell>
   );
@@ -180,6 +181,7 @@ export default function App() {
       <>
         <ToastContainer />
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<PublicRoutes />} />
         </Routes>

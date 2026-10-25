@@ -8,7 +8,7 @@ export default function PublicShell({ children }) {
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-stone-50">
       <header className="flex shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4 py-3 sm:px-8">
-        <button onClick={() => navigate("/catalog")} className="flex items-center gap-2">
+        <button onClick={() => navigate("/")} className="flex items-center gap-2">
           <img src={afenetLogo} alt="AFENET" className="h-8 w-auto object-contain" />
           <span className="text-sm font-bold tracking-tight text-stone-900">Afenet LMS</span>
         </button>

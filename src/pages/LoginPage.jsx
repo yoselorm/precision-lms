@@ -19,8 +19,7 @@ import { login } from "../store/slices/authSlice";
 import { selectAllUsers, addUser, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
-
-const HERO_IMAGE = "https://picsum.photos/seed/afenet-study-hero/1400/1867";
+import authHero from "../assets/images/auth-hero.webp";
 
 const ROLE_META = {
   learner: { label: "Learner", icon: BookOpen, color: "#16a34a" },
@@ -34,7 +33,7 @@ function delay(ms) {
 
 function Field({ label, action, children }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <label className="text-xs font-semibold text-stone-700">{label}</label>
         {action}
@@ -91,7 +90,7 @@ function DemoAccountsPanel({ onFill }) {
     .filter(Boolean);
 
   return (
-    <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50">
+    <div className="mt-8 rounded-xl border border-stone-200 bg-stone-50">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -167,7 +166,7 @@ function LoginTab({ onLoggedIn }) {
 
   return (
     <div>
-      <form onSubmit={handleSubmit} className="space-y-3.5">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
             <AlertCircle size={14} className="shrink-0" /> {error}
@@ -202,7 +201,7 @@ function LoginTab({ onLoggedIn }) {
         <button
           type="submit"
           disabled={loading}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {loading && <Loader2 size={14} className="animate-spin" />}
           {loading ? "Signing in..." : "Sign In"}
@@ -311,7 +310,7 @@ function SignupTab({ onSignedUp }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
           <AlertCircle size={14} className="shrink-0" /> {error}
@@ -336,7 +335,7 @@ function SignupTab({ onSignedUp }) {
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 gap-3">
         <PasswordField
           label="Password"
           value={form.password}
@@ -360,9 +359,9 @@ function SignupTab({ onSignedUp }) {
       </Field>
 
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-stone-700">Role</label>
+        <label className="mb-2 block text-xs font-semibold text-stone-700">Role</label>
         <div className="flex gap-2">
-          {["learner", "trainer", "admin"].map((r) => (
+          {["learner", "trainer"].map((r) => (
             <button
               type="button"
               key={r}
@@ -380,7 +379,7 @@ function SignupTab({ onSignedUp }) {
       <button
         type="submit"
         disabled={loading}
-        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 text-xs sm:text-sm font-bold text-white shadow-xs transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {loading && <Loader2 size={14} className="animate-spin" />}
         {loading ? "Creating account..." : "Create Account"}
@@ -401,10 +400,10 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white">
       {/* Scrollable Left Form Column */}
-      <div className="flex h-full w-full flex-col justify-between overflow-y-auto px-6 py-8 sm:px-10 md:px-14 lg:w-1/2 lg:px-16">
+      <div className="flex h-full w-full flex-col overflow-y-auto px-6 py-8 sm:px-10 md:px-14 lg:w-1/2 lg:px-16">
         {/* Top Header */}
-        <div className="mx-auto w-full max-w-sm">
-          <div className="mb-5 flex flex-col items-center text-center">
+        <div className="mx-auto my-auto w-full max-w-sm">
+          <div className="mb-8 flex flex-col items-center text-center">
             <div className="mb-1.5 flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white shadow-xs ring-1 ring-stone-200">
                 <img src={afenetLogo} alt="AFENET" className="h-full w-full object-contain p-0.5" />
@@ -417,7 +416,7 @@ export default function LoginPage() {
           </div>
 
           {/* Navigation Tabs */}
-          <div className="mb-5 flex justify-center gap-8 border-b border-stone-100">
+          <div className="mb-8 flex justify-center gap-8 border-b border-stone-100">
             <button
               onClick={() => setTab("login")}
               className={`-mb-px border-b-2 pb-2.5 text-xs sm:text-sm font-bold transition ${
@@ -437,11 +436,11 @@ export default function LoginPage() {
           </div>
 
           {/* Title and Body */}
-          <div className="mb-5 text-center">
+          <div className="mb-8 text-center">
             <h1 className="text-xl sm:text-2xl font-black text-stone-900">
               {isLogin ? "Welcome Back" : "Create Your Account"}
             </h1>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-2 text-xs text-stone-500">
               {location.state?.from
                 ? "Sign in or create an account to continue enrolling."
                 : isLogin
@@ -454,14 +453,14 @@ export default function LoginPage() {
         </div>
 
         {/* Subtle Footer */}
-        <div className="mx-auto mt-6 text-center text-[11px] text-stone-400">
+        <div className="mx-auto mt-10 text-center text-[11px] text-stone-400">
           © {new Date().getFullYear()} Afenet LMS · Secure Authentication
         </div>
       </div>
 
       {/* Right Hero Image (Static, No Scroll) */}
       <div className="relative hidden h-full lg:block lg:w-1/2">
-        <img src={HERO_IMAGE} alt="Afenet learning environment" className="h-full w-full object-cover select-none" />
+        <img src={authHero} alt="Open book and coffee on a study desk" className="h-full w-full object-cover object-[center_65%] select-none" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
       </div>
     </div>
