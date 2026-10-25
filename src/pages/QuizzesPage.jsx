@@ -11,6 +11,7 @@ import { selectAllClasses, setClassQuiz, removeClassQuiz } from "../store/slices
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
+import ModalOverlay from "../components/ModalOverlay";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -138,7 +139,7 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <div className="max-h-[90vh] w-full max-w-xl animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">{editing ? "Edit quiz" : "Create a quiz"}</h2>
@@ -296,13 +297,13 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
 function QuizPreviewModal({ row, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <div className="max-h-[90vh] w-full max-w-xl animate-scale-in overflow-y-auto rounded-2xl bg-stone-50 p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -318,7 +319,7 @@ function QuizPreviewModal({ row, onClose }) {
         </div>
         <QuizPreview quiz={row.quiz} />
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

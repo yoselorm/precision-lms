@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Download, FileDown, Loader2, X } from "lucide-react";
 import CertificateCanvas, { CertificatePage } from "./CertificateCanvas";
+import ModalOverlay from "./ModalOverlay";
 import { PAGE_WIDTH, PAGE_HEIGHT, getTemplate, formatCertificateDate } from "../utils/certificateTemplate";
 
 // Shows a course's certificate filled in for one learner, with PNG and PDF
@@ -44,7 +45,7 @@ export default function CertificateView({ certificate, learnerName, courseTitle,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/60 p-4">
+    <ModalOverlay tint="bg-stone-950/75">
       <div className="w-full max-w-4xl animate-scale-in">
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
           <button
@@ -73,6 +74,6 @@ export default function CertificateView({ certificate, learnerName, courseTitle,
       <div aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0 }}>
         <CertificatePage ref={exportRef} template={template} data={data} />
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

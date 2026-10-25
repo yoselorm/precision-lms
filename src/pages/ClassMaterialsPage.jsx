@@ -10,6 +10,7 @@ import { selectAllCourses, selectCourseById, createBlankCourse } from "../store/
 import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import ModalOverlay from "../components/ModalOverlay";
 
 // Attaches a course to the class (in addition to whatever's already there),
 // with the per-class "mandatory" flag set at the same time.
@@ -47,7 +48,7 @@ function AddCourseModal({ classId, existingCourseIds, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
         <h2 className="mb-4 text-base font-bold text-stone-900">Add a course to this class</h2>
 
@@ -117,7 +118,7 @@ function AddCourseModal({ classId, existingCourseIds, onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
 

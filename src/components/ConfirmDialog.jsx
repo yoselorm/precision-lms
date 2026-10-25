@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AlertTriangle, HelpCircle } from "lucide-react";
+import ModalOverlay from "./ModalOverlay";
 
 const ConfirmContext = createContext(null);
 
@@ -53,10 +54,7 @@ function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = 
   }, [onCancel]);
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex animate-backdrop-in items-center justify-center bg-black/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
-    >
+    <ModalOverlay layer="z-[60]" onBackdropClick={onCancel}>
       <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" className="w-full max-w-sm animate-scale-in rounded-2xl bg-white p-6 shadow-xl">
         <div className={`mb-4 flex h-11 w-11 items-center justify-center rounded-full ${danger ? "bg-rose-50" : "bg-brand-50"}`}>
           {danger ? <AlertTriangle size={20} className="text-rose-600" /> : <HelpCircle size={20} className="text-brand-700" />}
@@ -78,6 +76,6 @@ function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = 
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

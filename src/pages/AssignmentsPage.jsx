@@ -19,6 +19,7 @@ import {
 import { selectAllSubmissions } from "../store/slices/submissionsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
+import ModalOverlay from "../components/ModalOverlay";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -113,7 +114,7 @@ function AssignmentFormModal({ courses, classes, editing, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">{editing ? "Edit assignment" : "Create an assignment"}</h2>
@@ -226,13 +227,13 @@ function AssignmentFormModal({ courses, classes, editing, onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
 
 function SubmissionsModal({ row, submissions, users, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <div className="max-h-[80vh] w-full max-w-md animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -269,7 +270,7 @@ function SubmissionsModal({ row, submissions, users, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

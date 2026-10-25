@@ -6,6 +6,7 @@ import { addCourse } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import ModalOverlay from "./ModalOverlay";
 
 const CATEGORIES = ["Compliance", "Leadership", "Onboarding", "Technical Skills", "Sales", "Marketing"];
 
@@ -49,7 +50,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-xl animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Add a new course</h2>
@@ -173,6 +174,6 @@ export default function CourseFormModal({ onClose, onCreated }) {
           Topics and lessons are added from the course's page; quizzes and assignments from the Quizzes and Assignments pages.
         </p>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }

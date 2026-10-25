@@ -4,6 +4,7 @@ import { Plus, X, Check, Ban, Clock } from "lucide-react";
 import Header from "../components/Header";
 import { selectAllUsers, addUser, setUserStatus, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import ModalOverlay from "../components/ModalOverlay";
 
 const ROLES = ["learner", "admin", "trainer"];
 
@@ -66,7 +67,7 @@ function UserFormModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Add a user</h2>
@@ -148,7 +149,7 @@ function UserFormModal({ onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
 

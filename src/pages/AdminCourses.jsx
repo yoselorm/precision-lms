@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import CourseFormModal from "../components/CourseFormModal";
 import { selectAllCourses, setCourseStatus, reviewCourseUpdate } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import ModalOverlay from "../components/ModalOverlay";
 
 const STATUS_PILL = {
   draft: "bg-blue-50 text-blue-700 border-blue-200",
@@ -22,7 +23,7 @@ const FILTERS = [
 function DenyCourseModal({ course, isUpdate = false, onDeny, onClose }) {
   const [reason, setReason] = useState("");
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -63,7 +64,7 @@ function DenyCourseModal({ course, isUpdate = false, onDeny, onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
 

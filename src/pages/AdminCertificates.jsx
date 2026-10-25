@@ -8,6 +8,7 @@ import { selectAllCourses, setCourseCertificate } from "../store/slices/coursesS
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
+import ModalOverlay from "../components/ModalOverlay";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -55,7 +56,7 @@ function CertificateFormModal({ courses, editing, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-md animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">{editing ? "Edit certificate" : "Create a certificate"}</h2>
@@ -111,7 +112,7 @@ function CertificateFormModal({ courses, editing, onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
 

@@ -38,6 +38,7 @@ import {
   readImageFile,
   formatCertificateDate,
 } from "../utils/certificateTemplate";
+import ModalOverlay from "../components/ModalOverlay";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs outline-none focus:border-brand-600";
 
@@ -147,7 +148,7 @@ function SignaturePad({ onUse, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <div className="w-full max-w-lg animate-scale-in rounded-2xl bg-white p-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Draw signature</h2>
@@ -179,7 +180,7 @@ function SignaturePad({ onUse, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

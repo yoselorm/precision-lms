@@ -6,6 +6,7 @@ import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import ModalOverlay from "./ModalOverlay";
 
 // Sets up a new class — used both from Admin > Classes (any trainer) and
 // from the general Classes page (a trainer creating one of their own).
@@ -58,7 +59,7 @@ export default function ClassFormModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+    <ModalOverlay>
       <form onSubmit={handleSubmit} className="max-h-[90vh] w-full max-w-lg animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold text-stone-900">Set up a new class</h2>
@@ -178,6 +179,6 @@ export default function ClassFormModal({ onClose }) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
