@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { CheckSquare, Square, History, Timer } from "lucide-react";
 import { sameSet, formatClock } from "../utils/quiz";
 import { QuizResult, QuizReview } from "./QuizPieces";
+import QuizPreview from "./QuizPreview";
 
 // The actual "taking the quiz" experience — questions, live countdown if the
 // quiz has a time limit, grading on submit, a per-question review, and
@@ -44,6 +45,16 @@ export default function QuizTaker({
 
   const isQuestionAnswered = (q) => (quizAnswers[q.id] || []).length > 0;
 
+  // Attempt limits: `attempts` comes from the store, so it already includes
+  // the attempt just submitted by the time the result screen renders.
+  const maxAttempts = quiz?.maxAttempts || null;
+  const attemptsLeft = maxAttempts ? Math.max(0, maxAttempts - attempts.length) : undefined;
+  const outOfAttempts = attemptsLeft === 0;
+  const hasPassed = attempts.some((a) => a.passed);
+  const revealAnswers = quiz?.showAnswers !== false;
+  // Opened again after the last attempt was already used — nothing to take.
+  const locked = outOfAttempts && !quizSubmitted;
+
   const handleSubmit = (timedOut = false) => {
     const answers = quizAnswersRef.current;
     const total = quiz.questions.length;
@@ -66,7 +77,7 @@ export default function QuizTaker({
   // from this quiz's own page.
   const timeLimitMins = quiz?.timeLimitMins;
   useEffect(() => {
-    if (quizSubmitted || !timeLimitMins) {
+    if (quizSubmitted || !timeLimitMins || locked) {
       setSecondsLeft(null);
       return;
     }
@@ -75,7 +86,7 @@ export default function QuizTaker({
       setSecondsLeft((prev) => (prev === null ? null : Math.max(0, prev - 1)));
     }, 1000);
     return () => clearInterval(interval);
-  }, [quizSubmitted, timeLimitMins]);
+  }, [quizSubmitted, timeLimitMins, locked]);
 
   useEffect(() => {
     if (secondsLeft === 0 && !quizSubmitted) {
@@ -131,7 +142,28 @@ export default function QuizTaker({
         </div>
       )}
 
-      {quiz.questions.length === 0 ? (
+      {locked ? (
+        <div className="animate-fade-in space-y-5">
+          <div className="rounded-xl border border-stone-200 bg-white p-6 text-center sm:p-8">
+            <h2 className="text-lg font-bold text-stone-900">No attempts left</h2>
+            <p className="mt-1 text-sm text-stone-500">
+              {maxAttempts === 1 ? "You've used your only attempt" : `You've used all ${maxAttempts} attempts`} · best score{" "}
+              {Math.max(...attempts.map((a) => a.score))}%{hasPassed ? " (passed)" : ""}
+            </p>
+            {onBack && (
+              <button onClick={onBack} className="mt-4 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50">
+                {backLabel}
+              </button>
+            )}
+          </div>
+          {revealAnswers && (
+            <div>
+              <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-stone-400">Correct answers</h3>
+              <QuizPreview quiz={quiz} />
+            </div>
+          )}
+        </div>
+      ) : quiz.questions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-400">
           This quiz doesn't have any questions yet.
         </div>
@@ -187,11 +219,16 @@ export default function QuizTaker({
             passingScore={quiz.passingScore}
             onBack={onBack}
             backLabel={backLabel}
-            onRetry={handleRetry}
+            onRetry={outOfAttempts ? undefined : handleRetry}
+            attemptsLeft={attemptsLeft}
             hasCertificate={hasCertificate}
             onViewCertificate={onViewCertificate}
           />
-          <QuizReview questions={quiz.questions} answers={lastResult?.answersSnapshot ?? {}} />
+          <QuizReview
+            questions={quiz.questions}
+            answers={lastResult?.answersSnapshot ?? {}}
+            revealCorrect={revealAnswers && (hasPassed || outOfAttempts)}
+          />
         </div>
       )}
     </div>

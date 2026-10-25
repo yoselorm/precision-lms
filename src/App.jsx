@@ -10,7 +10,6 @@ import LearnerDashboard from "./pages/LearnerDashboard";
 import CourseCatalog from "./pages/CourseCatalog";
 import CoursePlayer from "./pages/CoursePlayer";
 import MyCoursesPage from "./pages/MyCoursesPage";
-import TeamPage from "./pages/TeamPage";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
 import CourseManagePage from "./pages/CourseManagePage";
@@ -20,11 +19,15 @@ import AdminClasses from "./pages/AdminClasses";
 import AdminEnroll from "./pages/AdminEnroll";
 import ClassesCatalog from "./pages/ClassesCatalog";
 import CertificatesPage from "./pages/CertificatesPage";
+import AdminCertificates from "./pages/AdminCertificates";
+import CertificateDesigner from "./pages/CertificateDesigner";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import ClassMaterialsPage from "./pages/ClassMaterialsPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import CourseQuizPage from "./pages/CourseQuizPage";
 import ClassQuizPage from "./pages/ClassQuizPage";
+import QuizzesPage from "./pages/QuizzesPage";
+import AssignmentsPage from "./pages/AssignmentsPage";
 import ToastContainer from "./components/ToastContainer";
 import { selectCurrentUser, selectIsAuthenticated } from "./store/slices/authSlice";
 
@@ -63,20 +66,21 @@ function AppShell() {
           <Route path="/classes" element={<ClassesCatalog onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/classes/:classId" element={<ClassDetailPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/classes/:classId/quiz" element={<ClassQuizPage onMenuClick={() => setMobileOpen(true)} />} />
-          <Route path="/certificates" element={<CertificatesPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/quizzes" element={<QuizzesPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/assignments" element={<AssignmentsPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route
+            path="/certificates"
+            element={
+              <RequireRole allowed={["learner"]}>
+                <CertificatesPage onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
           <Route
             path="/classes/:classId/manage"
             element={
               <RequireRole allowed={["admin", "trainer"]}>
                 <ClassMaterialsPage onMenuClick={() => setMobileOpen(true)} />
-              </RequireRole>
-            }
-          />
-          <Route
-            path="/team"
-            element={
-              <RequireRole allowed={["admin"]}>
-                <TeamPage onMenuClick={() => setMobileOpen(true)} />
               </RequireRole>
             }
           />
@@ -133,6 +137,22 @@ function AppShell() {
             element={
               <RequireRole allowed={["admin"]}>
                 <AdminClasses onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/certificates"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <AdminCertificates onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/certificates/:courseId/design"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <CertificateDesigner onMenuClick={() => setMobileOpen(true)} />
               </RequireRole>
             }
           />

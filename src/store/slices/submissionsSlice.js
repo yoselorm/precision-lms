@@ -25,8 +25,8 @@ const submissionsSlice = createSlice({
         return {
           payload: {
             id: `sub-${nanoid(6)}`,
-            type, // "assignment" | "capstone"
-            refId, // assignmentId or courseId
+            type, // "assignment"
+            refId, // assignmentId
             userId,
             fileName,
             fileSize,

@@ -5,7 +5,8 @@ import { sameSet } from "../utils/quiz";
 // Pass/fail summary shown right after a submit. `onBack` is optional — omit
 // it where there's no obvious "back to X" destination (e.g. a class quiz
 // taken inline on the class page already).
-export function QuizResult({ score, passingScore, onBack, backLabel = "Back", onRetry, hasCertificate, onViewCertificate }) {
+// `onRetry` is omitted once the learner has no attempts left.
+export function QuizResult({ score, passingScore, onBack, backLabel = "Back", onRetry, attemptsLeft, hasCertificate, onViewCertificate }) {
   const passed = score >= passingScore;
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-6 text-center sm:p-8">
@@ -20,13 +21,18 @@ export function QuizResult({ score, passingScore, onBack, backLabel = "Back", on
       <p className="mb-4 text-sm text-stone-500">
         You scored <strong>{score}%</strong> — passing score is {passingScore}%.
       </p>
+      {!passed && attemptsLeft !== undefined && (
+        <p className="-mt-2 mb-4 text-xs font-semibold text-stone-500">
+          {attemptsLeft > 0 ? `${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} left` : "You've used all your attempts for this quiz."}
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-center gap-3">
         {onBack && (
           <button onClick={onBack} className="rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50">
             {backLabel}
           </button>
         )}
-        {!passed && (
+        {!passed && onRetry && (
           <button onClick={onRetry} className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-800">
             <RotateCcw size={14} /> Retry quiz
           </button>
@@ -41,13 +47,16 @@ export function QuizResult({ score, passingScore, onBack, backLabel = "Back", on
   );
 }
 
-// Per-question breakdown shown after a submit: what was picked, what was
-// actually correct, so self-marking feels like real feedback rather than
-// just a raw percentage.
-export function QuizReview({ questions, answers }) {
+// Per-question breakdown shown after a submit: what was picked and whether
+// it was right. The correct answers themselves are only shown when
+// `revealCorrect` is set — the quiz's author decides when learners see them.
+export function QuizReview({ questions, answers, revealCorrect = true }) {
   return (
     <div className="space-y-3">
       <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400">Review your answers</h3>
+      {!revealCorrect && (
+        <p className="text-xs text-stone-400">Correct answers aren't shown yet — you'll see which questions you got right or wrong.</p>
+      )}
       {questions.map((q, qi) => {
         const selected = answers[q.id] || [];
         const correct = sameSet(selected, q.correct);
@@ -63,6 +72,13 @@ export function QuizReview({ questions, answers }) {
               {q.options.map((opt, oi) => {
                 const isCorrectOption = q.correct.includes(oi);
                 const wasPicked = selected.includes(oi);
+                if (!revealCorrect) {
+                  return (
+                    <p key={oi} className={`text-xs ${wasPicked ? "font-semibold text-stone-800" : "text-stone-500"}`}>
+                      {wasPicked ? "●" : "·"} {opt}
+                    </p>
+                  );
+                }
                 return (
                   <p
                     key={oi}

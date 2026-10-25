@@ -1,11 +1,16 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import { Clock, Users, Layers } from "lucide-react";
+import { selectCurrentUser } from "../store/slices/authSlice";
 import CircularProgress from "./CircularProgress";
 import StatusBadge from "./StatusBadge";
 
 export default function CourseCard({ course, enrollment }) {
   const navigate = useNavigate();
+  const currentUser = useSelector(selectCurrentUser);
+  // Only learners (or visitors who'll sign up as one) can enroll.
+  const canEnroll = !currentUser || currentUser.role === "learner";
   const progress = enrollment?.progress ?? 0;
   const status = enrollment?.status ?? "not-started";
   const ringColor = progress === 100 ? "#16a34a" : progress > 0 ? "#2563eb" : "#d6d3d1";
@@ -57,7 +62,9 @@ export default function CourseCard({ course, enrollment }) {
             onClick={() => navigate(`/course/${course.id}`)}
             className="rounded-lg bg-brand-700 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-brand-800"
           >
-            {status === "not-started"
+            {!canEnroll
+              ? "View course"
+              : status === "not-started"
               ? course.price > 0
                 ? `Enroll — GH₵${course.price}`
                 : "Enroll now"

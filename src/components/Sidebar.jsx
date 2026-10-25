@@ -5,9 +5,10 @@ import {
   LayoutDashboard,
   BookOpen,
   BookMarked,
-  Users,
   ShieldCheck,
   Award,
+  HelpCircle,
+  FileText,
   CalendarDays,
   ChevronDown,
   ChevronsLeft,
@@ -28,7 +29,8 @@ const baseLinks = [
   { to: "/", label: "My Dashboard", icon: LayoutDashboard },
   { to: "/catalog", label: "Course Catalog", icon: BookOpen },
   { to: "/classes", label: "Classes", icon: CalendarDays },
-  { to: "/certificates", label: "My Certificates", icon: Award },
+  { to: "/quizzes", label: "Quizzes", icon: HelpCircle },
+  { to: "/assignments", label: "Assignments", icon: FileText },
 ];
 
 const adminLinks = [
@@ -36,6 +38,7 @@ const adminLinks = [
   { to: "/admin/courses", label: "Courses", icon: BookOpen },
   { to: "/admin/users", label: "Users", icon: UserPlus },
   { to: "/admin/classes", label: "Classes", icon: CalendarDays },
+  { to: "/admin/certificates", label: "Certificates", icon: Award },
   { to: "/admin/enroll", label: "Enroll users", icon: ClipboardList },
 ];
 
@@ -51,17 +54,22 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
   // Trainers only ever see the classes they teach on this page, so the nav
   // label reflects that; admins and learners both get the full, browsable
   // "Classes" list (learners self-enroll from there).
-  const links = baseLinks.map((link) =>
-    link.to === "/classes" && currentUser.role === "trainer" ? { ...link, label: "My Classes" } : link
-  );
+  const links = baseLinks
+    // Admins manage classes from Admin → Classes, so skip the duplicate here.
+    .filter((link) => !(link.to === "/classes" && currentUser.role === "admin"))
+    .map((link) => {
+      if (link.to === "/classes" && currentUser.role === "trainer") return { ...link, label: "My Classes" };
+      if (link.to === "/quizzes" && currentUser.role === "learner") return { ...link, label: "My Quizzes" };
+      if (link.to === "/assignments" && currentUser.role === "learner") return { ...link, label: "My Assignments" };
+      return link;
+    });
+  // Only learners earn certificates — admins manage them under Admin > Certificates.
   if (currentUser.role === "learner") {
     links.splice(2, 0, { to: "/my-courses", label: "My Courses", icon: BookMarked });
+    links.push({ to: "/certificates", label: "My Certificates", icon: Award });
   }
   if (currentUser.role === "trainer") {
     links.splice(1, 0, { to: "/trainer/courses", label: "Courses", icon: BookMarked });
-  }
-  if (currentUser.role === "admin") {
-    links.splice(3, 0, { to: "/team", label: "My Team", icon: Users });
   }
 
   const handleLogout = () => {

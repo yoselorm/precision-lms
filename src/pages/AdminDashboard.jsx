@@ -1,16 +1,13 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { ShieldCheck, Users, AlertTriangle, BookOpen, Wallet, CalendarDays, GraduationCap, ArrowRight } from "lucide-react";
+import { ShieldCheck, Users, BookOpen, Wallet, CalendarDays, GraduationCap, ArrowRight } from "lucide-react";
 import Header from "../components/Header";
 import ProgressBar from "../components/ProgressBar";
 import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { selectAllClasses } from "../store/slices/classesSlice";
-import { isOverdue } from "../components/StatusBadge";
-
-const ROLE_COLORS = { learner: "#16a34a", trainer: "#7c3aed", admin: "#dc2626" };
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -35,7 +32,6 @@ export default function AdminDashboard({ onMenuClick }) {
 
   const learnerCount = users.filter((u) => u.role === "learner").length;
   const trainerCount = users.filter((u) => u.role === "trainer").length;
-  const overdueCount = enrollments.filter((e) => isOverdue(e.dueDate, e.status)).length;
 
   const revenue = enrollments.reduce((sum, e) => {
     const course = courses.find((c) => c.id === e.courseId);
@@ -49,12 +45,6 @@ export default function AdminDashboard({ onMenuClick }) {
     const rate = relevant.length ? Math.round((completed / relevant.length) * 100) : 0;
     return { course, completed, total: relevant.length, rate };
   });
-
-  const roleBreakdown = ["learner", "trainer", "admin"].map((role) => ({
-    role,
-    count: users.filter((u) => u.role === role).length,
-  }));
-  const maxRoleCount = Math.max(...roleBreakdown.map((r) => r.count), 1);
 
   const topCourses = [...courses]
     .map((c) => ({ course: c, enrolled: enrollments.filter((e) => e.courseId === c.id).length }))
@@ -77,12 +67,11 @@ export default function AdminDashboard({ onMenuClick }) {
       <Header title="Admin Overview" subtitle="Org-wide training activity, compliance, and revenue." showSearch onMenuClick={onMenuClick} />
 
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard icon={Users} label="Learners" value={learnerCount} accent="#16a34a" />
           <StatCard icon={GraduationCap} label="Trainers" value={trainerCount} accent="#7c3aed" />
           <StatCard icon={BookOpen} label="Courses" value={courses.length} accent="#9333ea" />
           <StatCard icon={CalendarDays} label="Classes" value={classes.length} accent="#0891b2" />
-          <StatCard icon={AlertTriangle} label="Overdue" value={overdueCount} accent="#dc2626" />
           <StatCard icon={Wallet} label="Revenue" value={`GH₵${revenue}`} accent="#ea580c" />
         </div>
 
@@ -181,26 +170,6 @@ export default function AdminDashboard({ onMenuClick }) {
           {/* Right column */}
           <div className="space-y-5">
             <div className="rounded-2xl border border-stone-200 bg-white p-5">
-              <h2 className="mb-3 text-sm font-bold text-stone-800">People by role</h2>
-              <div className="space-y-2.5">
-                {roleBreakdown.map(({ role, count }) => (
-                  <div key={role}>
-                    <div className="mb-1 flex items-center justify-between text-xs">
-                      <span className="capitalize text-stone-600">{role}s</span>
-                      <span className="font-semibold text-stone-800">{count}</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-stone-100">
-                      <div
-                        className="h-1.5 rounded-full"
-                        style={{ width: `${(count / maxRoleCount) * 100}%`, backgroundColor: ROLE_COLORS[role] }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-stone-200 bg-white p-5">
               <h2 className="mb-3 text-sm font-bold text-stone-800">Top courses by enrollment</h2>
               <div className="space-y-3">
                 {topCourses.map(({ course, enrolled }) => (
@@ -231,6 +200,9 @@ export default function AdminDashboard({ onMenuClick }) {
                 </button>
                 <button onClick={() => navigate("/admin/classes")} className="flex w-full items-center justify-between rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50">
                   Set up a class <ArrowRight size={13} />
+                </button>
+                <button onClick={() => navigate("/admin/certificates")} className="flex w-full items-center justify-between rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50">
+                  Create a certificate <ArrowRight size={13} />
                 </button>
                 <button onClick={() => navigate("/admin/enroll")} className="flex w-full items-center justify-between rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50">
                   Enroll learners <ArrowRight size={13} />

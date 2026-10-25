@@ -2,13 +2,13 @@ import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { ClipboardCheck } from "lucide-react";
 import Header from "../components/Header";
-import { selectAllCourses } from "../store/slices/coursesSlice";
+import { selectPublicCourses } from "../store/slices/coursesSlice";
 import { selectLearners } from "../store/slices/usersSlice";
 import { selectAllEnrollments, enrollUser } from "../store/slices/enrollmentsSlice";
 
 export default function AdminEnroll({ onMenuClick }) {
   const dispatch = useDispatch();
-  const courses = useSelector(selectAllCourses);
+  const courses = useSelector(selectPublicCourses);
   const learners = useSelector(selectLearners);
   const enrollments = useSelector(selectAllEnrollments);
 

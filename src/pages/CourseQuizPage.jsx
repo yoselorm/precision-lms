@@ -34,6 +34,18 @@ export default function CourseQuizPage({ onMenuClick }) {
     );
   }
 
+  // Taking a quiz is a learner action, and only for courses they're enrolled in.
+  if (currentUser.role !== "learner" || !enrollment) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">
+        {currentUser.role === "learner" ? "Enroll in this course to take its quizzes." : "Only enrolled learners can take quizzes."}{" "}
+        <button className="ml-2 underline" onClick={() => navigate(`/course/${courseId}`)}>
+          Back to course
+        </button>
+      </div>
+    );
+  }
+
   const hasQuiz = (topic.quiz?.questions?.length ?? 0) > 0;
   if (!hasQuiz) {
     return (
@@ -53,6 +65,8 @@ export default function CourseQuizPage({ onMenuClick }) {
   const isItemComplete = (id) => (enrollment?.completedModuleIds ?? []).includes(id);
 
   const handleSubmit = (score, passed, timedOut) => {
+    const previousAttempts = enrollment?.topicQuizzes?.[topic.id]?.attempts?.length ?? 0;
+    const wasLastAttempt = !!topic.quiz.maxAttempts && previousAttempts + 1 >= topic.quiz.maxAttempts;
     dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: topic.id, score, passingScore: topic.quiz.passingScore }));
     if (!isItemComplete(quizItemId)) {
       dispatch(completeModule({ userId: currentUser.id, courseId: course.id, moduleId: quizItemId, totalModules: totalCompletable }));
@@ -64,7 +78,7 @@ export default function CourseQuizPage({ onMenuClick }) {
           ? `Time's up — auto-submitted with ${score}% (passing score is ${topic.quiz.passingScore}%).`
           : passed
           ? `Quiz passed with ${score}%!`
-          : `Scored ${score}% — passing score is ${topic.quiz.passingScore}%. Retry when ready.`,
+          : `Scored ${score}% — passing score is ${topic.quiz.passingScore}%.${wasLastAttempt ? " No attempts left." : " Retry when ready."}`,
       })
     );
   };

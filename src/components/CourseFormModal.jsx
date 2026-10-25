@@ -1,20 +1,23 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { X, Tag, Award, Trophy } from "lucide-react";
+import { X, Tag } from "lucide-react";
 import ThumbnailPicker from "./ThumbnailPicker";
 import { addCourse } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
+import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
 const CATEGORIES = ["Compliance", "Leadership", "Onboarding", "Technical Skills", "Sales", "Marketing"];
 
-// Shell-only "Add course" form shared by admins and trainers. Admin-authored
-// courses publish immediately; trainer-authored ones are submitted for
-// review and stay out of the public catalog until an admin approves them.
+// Shell-only "Add course" form shared by admins and trainers. Every course
+// starts as a draft owned by a trainer, who builds its content and submits
+// it for approval — when an admin creates one, they assign it to a trainer.
 export default function CourseFormModal({ onClose, onCreated }) {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const isTrainer = currentUser.role === "trainer";
+  const trainers = useSelector(selectApprovedTrainers);
+  const [trainerId, setTrainerId] = useState(trainers[0]?.id ?? "");
   const [form, setForm] = useState({
     title: "",
     category: CATEGORIES[0],
@@ -22,26 +25,23 @@ export default function CourseFormModal({ onClose, onCreated }) {
     durationMins: 45,
     price: 0,
     description: "",
-    certificateTitle: "",
     thumbnailImage: "",
-    capstoneTitle: "",
-    capstoneInstructions: "",
   });
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.title.trim()) return;
-    const action = dispatch(
-      addCourse({ ...form, creatorId: currentUser.id, status: isTrainer ? "pending" : "approved" })
-    );
+    if (!form.title.trim() || (!isTrainer && !trainerId)) return;
+    const ownerId = isTrainer ? currentUser.id : trainerId;
+    const action = dispatch(addCourse({ ...form, creatorId: ownerId, status: "draft" }));
+    const owner = trainers.find((t) => t.id === ownerId);
     dispatch(
       pushToast({
         type: "success",
         message: isTrainer
-          ? `"${form.title}" was submitted for admin approval — add topics from its manage page while you wait.`
-          : `"${form.title}" was created — add topics from its manage page.`,
+          ? `Draft "${form.title}" created — add its topics and lessons, then submit it for approval.`
+          : `"${form.title}" was created and assigned to ${owner?.name ?? "the trainer"} to build.`,
       })
     );
     onClose();
@@ -58,14 +58,38 @@ export default function CourseFormModal({ onClose, onCreated }) {
           </button>
         </div>
 
-        {isTrainer && (
+        {isTrainer ? (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
-            New courses you create need admin approval before learners can see them in the catalog. You can keep
-            building it (topics, lessons, quizzes) while it's pending.
+            Your course starts as a draft. Add its topics and lessons, then submit it for admin approval before
+            learners can see it in the catalog.
+          </p>
+        ) : (
+          <p className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-[11px] font-medium text-brand-800">
+            The trainer you assign builds the course content and submits it back to you for approval.
           </p>
         )}
 
         <div className="space-y-4">
+          {!isTrainer && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-stone-600">Assign to trainer</label>
+              {trainers.length === 0 ? (
+                <p className="text-xs text-rose-600">There are no approved trainers yet — approve or add one under Users first.</p>
+              ) : (
+                <select
+                  value={trainerId}
+                  onChange={(e) => setTrainerId(e.target.value)}
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+                >
+                  {trainers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">Course title</label>
             <input
@@ -135,42 +159,6 @@ export default function CourseFormModal({ onClose, onCreated }) {
               Mandatory course
             </label>
           </div>
-
-          <div>
-            <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-stone-600">
-              <Award size={12} /> Certificate title (leave blank for no certificate)
-            </label>
-            <input
-              value={form.certificateTitle}
-              onChange={(e) => update("certificateTitle", e.target.value)}
-              placeholder="e.g. Certificate of Completion — Advanced Negotiation"
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-          </div>
-
-          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-            <label className="mb-1 flex items-center gap-1 text-xs font-semibold text-amber-800">
-              <Trophy size={12} /> Capstone project (optional)
-            </label>
-            <input
-              value={form.capstoneTitle}
-              onChange={(e) => update("capstoneTitle", e.target.value)}
-              placeholder="e.g. Final Case Study Submission"
-              className="mb-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
-            />
-            {form.capstoneTitle && (
-              <textarea
-                value={form.capstoneInstructions}
-                onChange={(e) => update("capstoneInstructions", e.target.value)}
-                rows={2}
-                placeholder="What should students submit, and what should it cover?"
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-xs outline-none focus:border-brand-600"
-              />
-            )}
-            <p className="mt-1 text-[10px] text-amber-700">
-              Students will submit a PDF or Word doc for this from the course player.
-            </p>
-          </div>
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
@@ -182,7 +170,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
           </button>
         </div>
         <p className="mt-3 text-[11px] text-stone-400">
-          You'll add topics, lessons, and quizzes from the course's manage page right after this.
+          Topics and lessons are added from the course's page; quizzes and assignments from the Quizzes and Assignments pages.
         </p>
       </form>
     </div>

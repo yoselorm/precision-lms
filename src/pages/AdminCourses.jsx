@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Plus, Layers, Settings2, Check, Ban, Clock } from "lucide-react";
+import { Plus, Layers, Eye, Check, Ban, Clock, X } from "lucide-react";
 import Header from "../components/Header";
 import CourseFormModal from "../components/CourseFormModal";
-import { selectAllCourses, setCourseStatus } from "../store/slices/coursesSlice";
+import { selectAllCourses, setCourseStatus, reviewCourseUpdate } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
 const STATUS_PILL = {
+  draft: "bg-blue-50 text-blue-700 border-blue-200",
   approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
   pending: "bg-amber-50 text-amber-700 border-amber-200",
   denied: "bg-stone-100 text-stone-500 border-stone-200",
@@ -18,21 +19,78 @@ const FILTERS = [
   { id: "pending", label: "Pending approval" },
 ];
 
+function DenyCourseModal({ course, isUpdate = false, onDeny, onClose }) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex animate-backdrop-in items-center justify-center bg-black/40 p-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (reason.trim()) onDeny(reason);
+        }}
+        className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6"
+      >
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-base font-bold text-stone-900">{isUpdate ? "Deny course update" : "Deny course"}</h2>
+          <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-stone-500">
+          "{course.title}" — the trainer will see your feedback and can make changes and resubmit.
+          {isUpdate && " The live version stays as it is."}
+        </p>
+        <label className="mb-1 block text-xs font-semibold text-stone-600">Reason for the trainer</label>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={5}
+          required
+          autoFocus
+          placeholder="e.g. Topic 2 needs at least one video lesson, and the quiz pass mark should be 70%."
+          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+        />
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!reason.trim()}
+            className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isUpdate ? "Deny update" : "Deny course"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function AdminCourses({ onMenuClick }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const courses = useSelector(selectAllCourses);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [denying, setDenying] = useState(null);
 
-  const pendingCount = courses.filter((c) => c.status === "pending").length;
-  const filtered = useMemo(
-    () => (filter === "pending" ? courses.filter((c) => c.status === "pending") : courses),
-    [courses, filter]
-  );
+  const awaitingReview = (c) => c.status === "pending" || c.revision?.status === "pending";
+  const pendingCount = courses.filter(awaitingReview).length;
+  const filtered = useMemo(() => (filter === "pending" ? courses.filter(awaitingReview) : courses), [courses, filter]);
 
-  const handleStatusChange = (course, status) => {
-    dispatch(setCourseStatus({ courseId: course.id, status }));
+  const handleUpdateReview = (course, approve, reason) => {
+    dispatch(reviewCourseUpdate({ courseId: course.id, approve, reason }));
+    dispatch(
+      pushToast({
+        type: approve ? "success" : "info",
+        message: approve ? `The update to "${course.title}" is now live.` : `The update to "${course.title}" was denied.`,
+      })
+    );
+  };
+
+  const handleStatusChange = (course, status, reason) => {
+    dispatch(setCourseStatus({ courseId: course.id, status, reason }));
     dispatch(
       pushToast({
         type: status === "approved" ? "success" : "info",
@@ -80,7 +138,6 @@ export default function AdminCourses({ onMenuClick }) {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Price</th>
                 <th className="px-4 py-3">Certificate</th>
-                <th className="px-4 py-3">Capstone</th>
                 <th className="px-4 py-3">
                   <Layers size={12} className="inline" /> Topics
                 </th>
@@ -112,6 +169,16 @@ export default function AdminCourses({ onMenuClick }) {
                         {status === "pending" && <Clock size={10} />}
                         {status}
                       </span>
+                      {c.revision?.status === "pending" && (
+                        <span className="mt-1 flex w-fit items-center gap-1 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                          <Clock size={10} /> Update pending
+                        </span>
+                      )}
+                      {status === "denied" && c.review?.reason && (
+                        <p className="mt-1 max-w-[14rem] text-[10px] leading-snug text-stone-500" title={c.review.reason}>
+                          <span className="line-clamp-2">{c.review.reason}</span>
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {c.price > 0 ? (
@@ -121,12 +188,11 @@ export default function AdminCourses({ onMenuClick }) {
                       )}
                     </td>
                     <td className="px-4 py-3 text-stone-500">{c.certificate ? "Yes" : "—"}</td>
-                    <td className="px-4 py-3 text-stone-500">{c.capstone ? "Yes" : "—"}</td>
                     <td className="px-4 py-3 text-stone-500">{c.topics.length}</td>
                     <td className="px-4 py-3 text-stone-500">{quizCount || "—"}</td>
                     <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1.5">
+                      <div className="flex justify-end gap-1.5 whitespace-nowrap">
                         {status === "pending" && (
                           <>
                             <button
@@ -136,10 +202,26 @@ export default function AdminCourses({ onMenuClick }) {
                               <Check size={11} /> Approve
                             </button>
                             <button
-                              onClick={() => handleStatusChange(c, "denied")}
+                              onClick={() => setDenying({ course: c, isUpdate: false })}
                               className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
                             >
                               <Ban size={11} /> Deny
+                            </button>
+                          </>
+                        )}
+                        {c.revision?.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateReview(c, true)}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
+                            >
+                              <Check size={11} /> Approve update
+                            </button>
+                            <button
+                              onClick={() => setDenying({ course: c, isUpdate: true })}
+                              className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                            >
+                              <Ban size={11} /> Deny update
                             </button>
                           </>
                         )}
@@ -155,7 +237,7 @@ export default function AdminCourses({ onMenuClick }) {
                           onClick={() => navigate(`/admin/courses/${c.id}/manage`)}
                           className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
                         >
-                          <Settings2 size={11} /> Manage
+                          <Eye size={11} /> View content
                         </button>
                       </div>
                     </td>
@@ -170,6 +252,18 @@ export default function AdminCourses({ onMenuClick }) {
 
       {showForm && (
         <CourseFormModal onClose={() => setShowForm(false)} onCreated={(courseId) => navigate(`/admin/courses/${courseId}/manage`)} />
+      )}
+      {denying && (
+        <DenyCourseModal
+          course={denying.course}
+          isUpdate={denying.isUpdate}
+          onClose={() => setDenying(null)}
+          onDeny={(reason) => {
+            if (denying.isUpdate) handleUpdateReview(denying.course, false, reason);
+            else handleStatusChange(denying.course, "denied", reason);
+            setDenying(null);
+          }}
+        />
       )}
     </div>
   );

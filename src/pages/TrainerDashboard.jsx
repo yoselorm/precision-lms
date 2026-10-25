@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { Users, BookOpen, CalendarClock, TrendingUp, Settings2, CalendarDays } from "lucide-react";
+import { Users, BookOpen, CheckCircle2, TrendingUp, Settings2, CalendarDays } from "lucide-react";
 import Header from "../components/Header";
 import ProgressBar from "../components/ProgressBar";
 import CircularProgress from "../components/CircularProgress";
@@ -34,7 +34,6 @@ export default function TrainerDashboard({ onMenuClick }) {
   const courses = useSelector((state) => state.courses.courses);
 
   const totalStudents = new Set(classes.flatMap((c) => c.memberIds)).size;
-  const activeClasses = classes.filter((c) => c.status === "active").length;
 
   const classRows = classes.map((cls) => {
     const classCourseIds = (cls.courses || []).map((c) => c.courseId);
@@ -51,6 +50,25 @@ export default function TrainerDashboard({ onMenuClick }) {
     ? Math.round(classRows.reduce((sum, r) => sum + r.avgProgress, 0) / classRows.length)
     : 0;
 
+  // Completion rate for every course the trainer is responsible for — ones
+  // they authored plus ones attached to the classes they teach.
+  const teachingCourseIds = new Set([
+    ...courses.filter((c) => c.createdBy === currentUser.id).map((c) => c.id),
+    ...classRows.flatMap((r) => r.classCourses.map((c) => c.id)),
+  ]);
+  const completionRows = courses
+    .filter((c) => teachingCourseIds.has(c.id))
+    .map((course) => {
+      const courseEnrollments = enrollments.filter((e) => e.courseId === course.id);
+      const completed = courseEnrollments.filter((e) => e.status === "completed").length;
+      const rate = courseEnrollments.length ? Math.round((completed / courseEnrollments.length) * 100) : 0;
+      return { course, completed, total: courseEnrollments.length, rate };
+    });
+  const totalEnrolled = completionRows.reduce((sum, r) => sum + r.total, 0);
+  const overallCompletion = totalEnrolled
+    ? Math.round((completionRows.reduce((sum, r) => sum + r.completed, 0) / totalEnrolled) * 100)
+    : 0;
+
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
       <Header title={`Welcome back, ${currentUser.name.split(" ")[0]}`} subtitle="Here's how your classes are progressing." showSearch onMenuClick={onMenuClick} />
@@ -60,7 +78,7 @@ export default function TrainerDashboard({ onMenuClick }) {
           <StatCard icon={CalendarDays} label="Classes" value={classes.length} accent="#7c3aed" />
           <StatCard icon={Users} label="Total learners" value={totalStudents} accent="#2563eb" />
           <StatCard icon={TrendingUp} label="Avg. progress" value={`${overallAvg}%`} accent="#16a34a" />
-          <StatCard icon={CalendarClock} label="Active now" value={activeClasses} accent="#ea580c" />
+          <StatCard icon={CheckCircle2} label="Completion rate" value={`${overallCompletion}%`} accent="#ea580c" />
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -127,24 +145,31 @@ export default function TrainerDashboard({ onMenuClick }) {
 
           <div className="space-y-4">
             <div className="rounded-2xl border border-stone-200 bg-white p-5 text-center">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">Overall class progress</p>
-              <CircularProgress value={overallAvg} size={100} strokeWidth={9} color="#21409A" />
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">Course completion rate</p>
+              <CircularProgress value={overallCompletion} size={100} strokeWidth={9} color="#21409A" />
             </div>
 
             <div className="rounded-2xl border border-stone-200 bg-white p-5">
-              <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-stone-800">
-                <BookOpen size={14} /> Courses you teach from
+              <h3 className="mb-4 flex items-center gap-1.5 text-sm font-bold text-stone-800">
+                <BookOpen size={14} /> Completion by course
               </h3>
-              <div className="space-y-2">
-                {[...new Set(classRows.flatMap((r) => r.classCourses.map((c) => c.id)))].map((courseId) => {
-                  const course = courses.find((c) => c.id === courseId);
-                  return (
-                    <div key={courseId} className="flex items-center gap-2 text-xs">
+              <div className="space-y-4">
+                {completionRows.map(({ course, completed, total, rate }) => (
+                  <div key={course.id}>
+                    <div className="mb-1.5 flex items-center gap-2">
                       <img src={course.thumbnailImage} alt="" className="h-8 w-12 shrink-0 rounded object-cover" />
-                      <span className="truncate font-medium text-stone-700">{course.title}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-stone-800">{course.title}</p>
+                        <p className="text-[10px] text-stone-400">
+                          {completed}/{total} completed
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-bold text-stone-700">{rate}%</span>
                     </div>
-                  );
-                })}
+                    <ProgressBar value={rate} heightClass="h-1.5" colorClass={rate >= 80 ? "bg-emerald-600" : rate >= 50 ? "bg-amber-500" : "bg-rose-500"} />
+                  </div>
+                ))}
+                {completionRows.length === 0 && <p className="text-xs text-stone-400">No courses yet.</p>}
               </div>
             </div>
           </div>

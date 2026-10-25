@@ -54,8 +54,7 @@ export default function SubmissionUpload({ type, refId, userId, disabled = false
 
       {disabled ? (
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-400">
-          <Lock size={13} className="shrink-0" /> Submissions are closed for this{" "}
-          {type === "capstone" ? "capstone" : "assignment"}.
+          <Lock size={13} className="shrink-0" /> Submissions are closed for this assignment.
         </div>
       ) : (
         <>

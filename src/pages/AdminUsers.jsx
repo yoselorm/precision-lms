@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Plus, X, Check, Ban, Clock } from "lucide-react";
 import Header from "../components/Header";
-import { selectAllUsers, addUser, setUserStatus } from "../store/slices/usersSlice";
+import { selectAllUsers, addUser, setUserStatus, selectUserByEmail } from "../store/slices/usersSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
 const ROLES = ["learner", "admin", "trainer"];
@@ -27,19 +27,41 @@ const FILTERS = [
   { id: "pending", label: "Pending approval" },
 ];
 
+// A readable temporary password the admin can pass on to the new user.
+function generatePassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
 function UserFormModal({ onClose }) {
   const dispatch = useDispatch();
-  const [form, setForm] = useState({ name: "", department: "", role: "learner" });
+  const [form, setForm] = useState({ name: "", email: "", password: generatePassword(), department: "", role: "learner" });
+  const [error, setError] = useState("");
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    setError("");
+    if (!form.name.trim() || !form.email.trim()) return;
+    if (form.password.length < 6) {
+      setError("The temporary password must be at least 6 characters.");
+      return;
+    }
+    const exists = dispatch((_, getState) => selectUserByEmail(getState(), form.email.trim()));
+    if (exists) {
+      setError("An account with this email already exists.");
+      return;
+    }
     // Admin-created accounts are approved immediately, regardless of role —
     // the approval step only applies to trainers who self-signed-up.
-    dispatch(addUser({ ...form, status: "approved" }));
-    dispatch(pushToast({ type: "success", message: `${form.name} was added as a ${form.role}.` }));
+    dispatch(addUser({ ...form, email: form.email.trim(), status: "approved" }));
+    dispatch(
+      pushToast({
+        type: "success",
+        message: `${form.name} was added as a ${form.role}. They can sign in with ${form.email.trim()} and the temporary password.`,
+      })
+    );
     onClose();
   };
 
@@ -53,6 +75,8 @@ function UserFormModal({ onClose }) {
           </button>
         </div>
 
+        {error && <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">Full name</label>
@@ -63,6 +87,32 @@ function UserFormModal({ onClose }) {
               placeholder="e.g. Kofi Adu"
               className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-stone-600">Email address</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => update("email", e.target.value)}
+              required
+              placeholder="e.g. kofi.adu@afenet.org"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
+            />
+          </div>
+          <div>
+            <label className="mb-1 flex items-center justify-between text-xs font-semibold text-stone-600">
+              Temporary password
+              <button type="button" onClick={() => update("password", generatePassword())} className="text-[11px] font-semibold text-brand-700 hover:underline">
+                Generate new
+              </button>
+            </label>
+            <input
+              value={form.password}
+              onChange={(e) => update("password", e.target.value)}
+              required
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-mono text-sm outline-none focus:border-brand-600"
+            />
+            <p className="mt-1 text-[11px] text-stone-400">Share this with the user so they can sign in.</p>
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-600">Department</label>
@@ -161,6 +211,7 @@ export default function AdminUsers({ onMenuClick }) {
             <thead className="border-b border-stone-200 bg-stone-50 text-[10px] uppercase tracking-wider text-stone-400">
               <tr>
                 <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Department</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Status</th>
@@ -176,6 +227,7 @@ export default function AdminUsers({ onMenuClick }) {
                       <img src={u.avatarUrl} alt={u.name} className="h-7 w-7 rounded-full object-cover" />
                       <span className="font-semibold text-stone-800">{u.name}</span>
                     </td>
+                    <td className="px-4 py-3 text-stone-500">{u.email || "—"}</td>
                     <td className="px-4 py-3 text-stone-500">{u.department}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${ROLE_PILL[u.role]}`}>{u.role}</span>

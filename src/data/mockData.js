@@ -267,10 +267,6 @@ export const mockCourses = [
       title: "Certificate of Completion — Leading High-Performing Teams",
       issuer: "Learning & Development"
     },
-    capstone: {
-      title: "Team Improvement Plan",
-      instructions: "Write a 2-3 page improvement plan for a real or hypothetical team you manage: current state, one specific feedback framework you'll apply, and how you'll measure progress over the next quarter."
-    },
     description: "Practical frameworks for first-time and experienced people managers.",
     topics: [
       {
@@ -1456,10 +1452,6 @@ export const mockCourses = [
       title: "Certificate of Completion — Introduction to Project Management",
       issuer: "Learning & Development"
     },
-    capstone: {
-      title: "Mini Project Plan",
-      instructions: "Submit a project charter (PDF or Word doc) for a small project of your choice: scope, timeline, key milestones, and a basic risk register with at least 3 identified risks."
-    },
     description: "Core planning, tracking, and delivery skills for running small projects.",
     topics: [
       {
@@ -1884,10 +1876,29 @@ export const mockClasses = [
   },
 ];
 
-// Class-level assignments set by a trainer (or admin) — distinct from a
-// course's capstone, which lives on the course itself and applies to
-// everyone taking that course regardless of which class/cohort they're in.
+// Assignments belong to either a class (classId — only that cohort gets it)
+// or a course (courseId — everyone enrolled in the course gets it).
 export const mockAssignments = [
+  {
+    id: "asg-c2",
+    courseId: "c2",
+    title: "Team Improvement Plan",
+    instructions: "Write a 2-3 page improvement plan for a real or hypothetical team you manage: current state, one specific feedback framework you'll apply, and how you'll measure progress over the next quarter.",
+    dueDate: null,
+    createdAt: "2026-02-14",
+    status: "open",
+    autoCloseOnDueDate: false,
+  },
+  {
+    id: "asg-c8",
+    courseId: "c8",
+    title: "Mini Project Plan",
+    instructions: "Submit a project charter (PDF or Word doc) for a small project of your choice: scope, timeline, key milestones, and a basic risk register with at least 3 identified risks.",
+    dueDate: null,
+    createdAt: "2026-04-18",
+    status: "open",
+    autoCloseOnDueDate: false,
+  },
   {
     id: "asg1",
     classId: "cls1",

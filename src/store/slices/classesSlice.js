@@ -1,5 +1,6 @@
 import { createSlice, nanoid } from "@reduxjs/toolkit";
 import { mockClasses } from "../../data/mockData";
+import { removeCourse } from "./coursesSlice";
 
 const initialState = {
   classes: mockClasses,
@@ -73,18 +74,25 @@ const classesSlice = createSlice({
       if (!cls) return;
       if (!cls.memberIds.includes(userId)) cls.memberIds.push(userId);
     },
-    // Trainer/admin authors or edits a class's own quiz — separate from
-    // whatever quiz lives on the attached course, and only seen by students
-    // in this specific class.
+    // Trainer/admin authors or edits a class's own quiz (from the Quizzes
+    // page) — separate from whatever quiz lives on the attached course, and
+    // only seen by students in this specific class.
     setClassQuiz(state, action) {
-      const { classId, passingScore, timeLimitMins, questions } = action.payload;
+      const { classId, title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions } = action.payload;
       const cls = state.classes.find((c) => c.id === classId);
       if (!cls) return;
       cls.quiz = {
+        title: title?.trim() || "",
         passingScore: Number(passingScore) || 70,
         timeLimitMins: Number(timeLimitMins) || null,
+        maxAttempts: Number(maxAttempts) || null,
+        showAnswers: showAnswers !== false,
         questions: questions || [],
       };
+    },
+    removeClassQuiz(state, action) {
+      const cls = state.classes.find((c) => c.id === action.payload.classId);
+      if (cls) cls.quiz = null;
     },
     submitClassQuizAttempt(state, action) {
       const { classId, userId, score, passingScore } = action.payload;
@@ -98,6 +106,13 @@ const classesSlice = createSlice({
       });
     },
   },
+  extraReducers: (builder) => {
+    builder.addCase(removeCourse, (state, action) => {
+      state.classes.forEach((cls) => {
+        cls.courses = (cls.courses || []).filter((c) => c.courseId !== action.payload.courseId);
+      });
+    });
+  },
 });
 
 export const {
@@ -107,6 +122,7 @@ export const {
   setCourseMandatory,
   enrollInClass,
   setClassQuiz,
+  removeClassQuiz,
   submitClassQuizAttempt,
 } = classesSlice.actions;
 export default classesSlice.reducer;

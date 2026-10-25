@@ -58,9 +58,9 @@ export default function CertificatesPage({ onMenuClick }) {
 
       {viewing && (
         <CertificateView
+          certificate={viewing.course.certificate}
           learnerName={currentUser.name}
           courseTitle={viewing.course.title}
-          issuer={viewing.course.certificate.issuer}
           completedAt={viewing.enrollment.completedAt}
           onClose={() => setViewing(null)}
         />

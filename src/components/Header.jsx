@@ -1,13 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Search, Menu, AlertTriangle, Clock, Award, Users, TrendingDown, BellOff } from "lucide-react";
+import { Bell, Search, Menu, Clock, Award, Users, TrendingDown, BellOff, Ban } from "lucide-react";
 import { useSelector } from "react-redux";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectPendingTrainers } from "../store/slices/usersSlice";
 import { selectAllEnrollments, selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
 import { selectClassesByTrainer } from "../store/slices/classesSlice";
 import { selectAllCourses, selectPendingCourses } from "../store/slices/coursesSlice";
-import { isOverdue } from "./StatusBadge";
 
 function daysUntil(dateStr) {
   return Math.ceil((new Date(dateStr) - new Date()) / (24 * 60 * 60 * 1000));
@@ -41,17 +40,8 @@ function useNotifications(currentUser) {
         items.push({
           id: "pending-courses",
           icon: Clock,
-          text: `${pendingCourses.length} trainer-submitted course${pendingCourses.length > 1 ? "s" : ""} awaiting approval`,
+          text: `${pendingCourses.length} course${pendingCourses.length > 1 ? "s" : ""} or course update${pendingCourses.length > 1 ? "s" : ""} awaiting approval`,
           to: "/admin/courses",
-        });
-      }
-      const overdueCount = allEnrollments.filter((e) => isOverdue(e.dueDate, e.status)).length;
-      if (overdueCount > 0) {
-        items.push({
-          id: "org-overdue",
-          icon: AlertTriangle,
-          text: `${overdueCount} overdue enrollment${overdueCount > 1 ? "s" : ""} org-wide`,
-          to: "/admin",
         });
       }
     }
@@ -69,18 +59,19 @@ function useNotifications(currentUser) {
         return avg < 40;
       });
       laggingClasses.forEach((c) => items.push({ id: `class-lag-${c.id}`, icon: TrendingDown, text: `"${c.title}" progress is falling behind`, to: `/classes/${c.id}/manage` }));
+      courses
+        .filter((c) => c.createdBy === currentUser.id && c.revision?.status === "denied")
+        .forEach((c) =>
+          items.push({ id: `update-denied-${c.id}`, icon: Ban, text: `Your update to "${c.title}" was denied — see the feedback`, to: `/trainer/courses/${c.id}/manage` })
+        );
+      courses
+        .filter((c) => c.createdBy === currentUser.id && c.status === "denied")
+        .forEach((c) =>
+          items.push({ id: `course-denied-${c.id}`, icon: Ban, text: `"${c.title}" was denied — see the admin's feedback`, to: `/trainer/courses/${c.id}/manage` })
+        );
     }
 
     if (currentUser.role === "learner") {
-      const overdue = myEnrollments.filter((e) => isOverdue(e.dueDate, e.status));
-      if (overdue.length > 0) {
-        items.push({ id: "my-overdue", icon: AlertTriangle, text: `${overdue.length} course${overdue.length > 1 ? "s" : ""} overdue`, to: "/my-courses" });
-      }
-      const dueSoon = myEnrollments.filter((e) => e.status !== "completed" && daysUntil(e.dueDate) >= 0 && daysUntil(e.dueDate) <= 3);
-      dueSoon.forEach((e) => {
-        const course = courses.find((c) => c.id === e.courseId);
-        if (course) items.push({ id: `due-soon-${e.id}`, icon: Clock, text: `"${course.title}" due in ${daysUntil(e.dueDate)} day(s)`, to: "/my-courses" });
-      });
       const recentCerts = myEnrollments.filter((e) => e.status === "completed" && e.completedAt && Math.abs(daysUntil(e.completedAt)) <= 7);
       recentCerts.forEach((e) => {
         const course = courses.find((c) => c.id === e.courseId);

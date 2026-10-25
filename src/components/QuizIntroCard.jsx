@@ -1,5 +1,5 @@
 import React from "react";
-import { HelpCircle, ListChecks, Target, AlertTriangle, PlayCircle, History } from "lucide-react";
+import { HelpCircle, ListChecks, Target, AlertTriangle, PlayCircle, History, RotateCcw } from "lucide-react";
 
 // Shown before a quiz is opened, wherever the course/class page links into
 // it — quiz meta, a clear warning if it's timed, and a "Start quiz" button
@@ -7,6 +7,8 @@ import { HelpCircle, ListChecks, Target, AlertTriangle, PlayCircle, History } fr
 // the timer never starts until the student has explicitly committed).
 export default function QuizIntroCard({ quiz, attempts = [], heading = "Knowledge check", subheading, onStart }) {
   const questionCount = quiz?.questions?.length ?? 0;
+  const maxAttempts = quiz?.maxAttempts || null;
+  const outOfAttempts = !!maxAttempts && attempts.length >= maxAttempts;
   const timeLimitMins = quiz?.timeLimitMins;
   const bestScore = attempts.length ? Math.max(...attempts.map((a) => a.score)) : null;
 
@@ -34,6 +36,9 @@ export default function QuizIntroCard({ quiz, attempts = [], heading = "Knowledg
             <span className="flex items-center gap-1">
               <Target size={12} /> Passing score {quiz.passingScore}%
             </span>
+            <span className="flex items-center gap-1">
+              <RotateCcw size={12} /> {maxAttempts ? `${maxAttempts} attempt${maxAttempts === 1 ? "" : "s"} allowed` : "Unlimited attempts"}
+            </span>
           </div>
 
           {timeLimitMins ? (
@@ -55,12 +60,22 @@ export default function QuizIntroCard({ quiz, attempts = [], heading = "Knowledg
             </p>
           )}
 
-          <button
-            onClick={onStart}
-            className="mx-auto mt-5 flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800"
-          >
-            <PlayCircle size={15} /> Start quiz
-          </button>
+          {outOfAttempts ? (
+            <button
+              onClick={onStart}
+              className="mx-auto mt-5 flex items-center gap-2 rounded-lg border border-stone-200 px-5 py-2.5 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+            >
+              No attempts left — view results
+            </button>
+          ) : (
+            <button
+              onClick={onStart}
+              className="mx-auto mt-5 flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800"
+            >
+              <PlayCircle size={15} /> Start quiz
+              {maxAttempts ? ` (${maxAttempts - attempts.length} left)` : ""}
+            </button>
+          )}
         </div>
       )}
     </div>

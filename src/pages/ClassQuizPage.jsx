@@ -45,11 +45,12 @@ export default function ClassQuizPage({ onMenuClick }) {
   }
 
   const handleSubmit = (score, passed) => {
+    const wasLastAttempt = !!cls.quiz.maxAttempts && attempts.length + 1 >= cls.quiz.maxAttempts;
     dispatch(submitClassQuizAttempt({ classId: cls.id, userId: currentUser.id, score, passingScore: cls.quiz.passingScore }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",
-        message: passed ? `Class quiz passed with ${score}%!` : `Scored ${score}% — passing score is ${cls.quiz.passingScore}%. Retry when ready.`,
+        message: passed ? `Class quiz passed with ${score}%!` : `Scored ${score}% — passing score is ${cls.quiz.passingScore}%.${wasLastAttempt ? " No attempts left." : " Retry when ready."}`,
       })
     );
   };
@@ -67,7 +68,7 @@ export default function ClassQuizPage({ onMenuClick }) {
         <QuizTaker
           quiz={cls.quiz}
           attempts={attempts}
-          heading="Class quiz"
+          heading={cls.quiz.title || "Class quiz"}
           subheading={cls.title}
           onSubmit={handleSubmit}
           onBack={() => navigate(`/classes/${classId}`)}

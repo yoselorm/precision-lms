@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft, HelpCircle, Users, CalendarDays, Plus, Trash2 } from "lucide-react";
 import Header from "../components/Header";
 import ThumbnailPicker from "../components/ThumbnailPicker";
 import CourseTopicsManager from "../components/CourseTopicsManager";
-import QuizManageModal from "../components/QuizManageModal";
-import { selectClassById, addCourseToClass, removeCourseFromClass, setCourseMandatory, setClassQuiz } from "../store/slices/classesSlice";
+import { selectClassById, addCourseToClass, removeCourseFromClass, setCourseMandatory } from "../store/slices/classesSlice";
 import { selectAllCourses, selectCourseById, createBlankCourse } from "../store/slices/coursesSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
@@ -40,7 +39,7 @@ function AddCourseModal({ classId, existingCourseIds, onClose }) {
     }
     if (!newTitle.trim()) return;
     const action = dispatch(
-      createBlankCourse({ title: newTitle, thumbnailImage, creatorId: currentUser.id, status: currentUser.role === "admin" ? "approved" : "pending" })
+      createBlankCourse({ title: newTitle, thumbnailImage, creatorId: currentUser.id, status: currentUser.role === "admin" ? "approved" : "draft" })
     );
     dispatch(addCourseToClass({ classId, courseId: action.payload.id, mandatory }));
     dispatch(pushToast({ type: "success", message: `"${newTitle}" created and added to the class.` }));
@@ -122,11 +121,12 @@ function AddCourseModal({ classId, existingCourseIds, onClose }) {
   );
 }
 
-// One attached course's full management surface: mandatory toggle plus its
-// topics/lessons/quizzes (via CourseTopicsManager, same component the admin
-// course-manage page uses) — independent of every other course on this class.
+// One attached course on this class: mandatory toggle plus its topics and
+// lessons. Only the course's own trainer can see and edit its content here;
+// admins see it read-only, and other trainers just see the course summary.
 function ClassCourseCard({ cls, entry }) {
   const dispatch = useDispatch();
+  const currentUser = useSelector(selectCurrentUser);
   const course = useSelector((state) => selectCourseById(state, entry.courseId));
 
   if (!course) return null;
@@ -166,7 +166,28 @@ function ClassCourseCard({ cls, entry }) {
         </div>
       </div>
 
-      <CourseTopicsManager course={course} />
+      {currentUser.role === "admin" ? (
+        <CourseTopicsManager course={course} readOnly />
+      ) : course.createdBy === currentUser.id ? (
+        (course.status || "approved") === "approved" ? (
+          <>
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[11px] font-medium text-emerald-800">
+              This course is live — changes here are saved as an update. Submit it for approval from the{" "}
+              <Link to={`/trainer/courses/${course.id}/manage`} className="font-semibold underline">
+                course page
+              </Link>
+              .
+            </p>
+            <CourseTopicsManager course={course} useRevision />
+          </>
+        ) : (
+          <CourseTopicsManager course={course} />
+        )
+      ) : (
+        <p className="rounded-xl border border-dashed border-stone-300 px-4 py-3 text-xs text-stone-400">
+          This course was created by another trainer, so its content isn't shown here.
+        </p>
+      )}
     </div>
   );
 }
@@ -174,13 +195,11 @@ function ClassCourseCard({ cls, entry }) {
 export default function ClassMaterialsPage({ onMenuClick }) {
   const { classId } = useParams();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
 
   const cls = useSelector((state) => selectClassById(state, classId));
   const users = useSelector(selectAllUsers);
   const [showAddCourse, setShowAddCourse] = useState(false);
-  const [showClassQuiz, setShowClassQuiz] = useState(false);
 
   if (!cls) {
     return (
@@ -250,48 +269,29 @@ export default function ClassMaterialsPage({ onMenuClick }) {
           classCourses.map((entry) => <ClassCourseCard key={entry.courseId} cls={cls} entry={entry} />)
         )}
 
-        <div className="rounded-2xl border border-stone-200 bg-white p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="flex items-center gap-1.5 text-sm font-bold text-stone-800">
-                <HelpCircle size={15} /> Class quiz (this cohort only)
-              </h3>
-              <p className="mt-0.5 text-xs text-stone-400">
-                {cls.quiz?.questions?.length
-                  ? `${cls.quiz.questions.length} question${cls.quiz.questions.length > 1 ? "s" : ""}${
-                      cls.quiz.timeLimitMins ? ` · ${cls.quiz.timeLimitMins} min limit` : ""
-                    }`
-                  : "No questions yet"}
-              </p>
-            </div>
-            <button
-              onClick={() => setShowClassQuiz(true)}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
-            >
-              <HelpCircle size={13} /> Manage quiz
-            </button>
+        <div className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-stone-800">
+              <HelpCircle size={15} /> Class quiz
+            </h3>
+            <p className="mt-0.5 text-xs text-stone-400">
+              {cls.quiz?.questions?.length
+                ? `${cls.quiz.title || "Quiz set"} · ${cls.quiz.questions.length} question${cls.quiz.questions.length > 1 ? "s" : ""}.`
+                : "No quiz for this class yet."}{" "}
+              Quizzes are created and edited on the Quizzes page.
+            </p>
           </div>
-          <p className="mt-2 text-[11px] text-stone-400">
-            A separate assessment just for students in this class — not tied to any single attached course, and
-            taken from the class page rather than a course player.
-          </p>
+          <button
+            onClick={() => navigate("/quizzes")}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+          >
+            <HelpCircle size={13} /> Go to Quizzes
+          </button>
         </div>
       </div>
 
       {showAddCourse && (
         <AddCourseModal classId={cls.id} existingCourseIds={existingCourseIds} onClose={() => setShowAddCourse(false)} />
-      )}
-      {showClassQuiz && (
-        <QuizManageModal
-          title="Manage class quiz"
-          subtitle={cls.title}
-          quiz={cls.quiz}
-          onSave={(payload) => {
-            dispatch(setClassQuiz({ classId: cls.id, ...payload }));
-            dispatch(pushToast({ type: "success", message: `Class quiz saved for "${cls.title}".` }));
-          }}
-          onClose={() => setShowClassQuiz(false)}
-        />
       )}
     </div>
   );
