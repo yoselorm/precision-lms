@@ -64,6 +64,7 @@ export default function CourseFormModal({ onClose, onCreated, editing }) {
   );
   const [errors, setErrors] = useState({});
   const [run, saving] = useApiAction();
+  const [mediaUploading, setMediaUploading] = useState(false);
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -212,7 +213,7 @@ export default function CourseFormModal({ onClose, onCreated, editing }) {
                 <Film size={14} className="text-stone-400" /> Demo video
               </Label>
               <p className="mb-2 text-xs text-stone-400">A short preview learners can watch before they enroll.</p>
-              <FileOrUrlInput value={form.demoVideoUrl} onChange={(v) => update("demoVideoUrl", v)} accept="video/*" kind="video" label={null} />
+              <FileOrUrlInput value={form.demoVideoUrl} onChange={(v) => update("demoVideoUrl", v)} accept="video/*" kind="video" label={null} onUploadingChange={setMediaUploading} />
             </div>
           </div>
 
@@ -259,7 +260,7 @@ export default function CourseFormModal({ onClose, onCreated, editing }) {
             <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+            <button type="submit" disabled={saving || mediaUploading} className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
               {saving ? "Saving..." : editing ? "Save changes" : "Create course"}
             </button>
           </div>

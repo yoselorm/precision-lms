@@ -22,6 +22,7 @@ export function formatFileSize(bytes) {
 export default function LessonListEditor({ courseId, topicId, lessons, readOnly = false }) {
   const [run, busy] = useApiAction();
   const [draft, setDraft] = useState(empty);
+  const [fileUploading, setFileUploading] = useState(false);
 
   const updateDraft = (field, value) => setDraft((prev) => ({ ...prev, [field]: value }));
 
@@ -109,9 +110,9 @@ export default function LessonListEditor({ courseId, topicId, lessons, readOnly 
           </div>
 
           {draft.type === "video" ? (
-            <FileOrUrlInput value={draft.videoUrl} onChange={(v) => updateDraft("videoUrl", v)} accept="video/*" kind="video" label={null} />
+            <FileOrUrlInput value={draft.videoUrl} onChange={(v) => updateDraft("videoUrl", v)} accept="video/*" kind="video" label={null} onUploadingChange={setFileUploading} />
           ) : draft.type === "document" ? (
-            <FileOrUrlInput value={draft.fileUrl} onChange={(v) => updateDraft("fileUrl", v)} accept=".pdf,.doc,.docx" kind="document" label={null} />
+            <FileOrUrlInput value={draft.fileUrl} onChange={(v) => updateDraft("fileUrl", v)} accept=".pdf,.doc,.docx" kind="document" label={null} onUploadingChange={setFileUploading} />
           ) : (
             <textarea
               value={draft.body}
@@ -126,7 +127,7 @@ export default function LessonListEditor({ courseId, topicId, lessons, readOnly 
             <button
               type="button"
               onClick={addLesson}
-              disabled={busy || !draft.title.trim()}
+              disabled={busy || fileUploading || !draft.title.trim()}
               className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add lesson

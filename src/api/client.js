@@ -84,9 +84,51 @@ export async function fetchAllPages(path, params = {}) {
   }
 }
 
-// Multipart upload to /uploads — resolves to { name, size, url }.
+// Multipart upload to /uploads (max 20 MB) — resolves to { name, size, url }.
 export function uploadFile(guard, file) {
   const form = new FormData();
   form.append("file", file);
   return apiRequest(guard === "admin" ? "/v1/admin/uploads" : "/v1/user/uploads", { method: "POST", body: form });
+}
+
+// Single presigned PUTs to Spaces top out at 5 GB; we cap lower so a long
+// upload over a weak connection isn't doomed from the start.
+export const MAX_LARGE_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+// Large files (lesson videos) skip the API server: ask it for a presigned
+// URL, PUT the file straight to object storage, then use the returned CDN
+// `url` like any other link. `onProgress` gets 0–100. Resolves to
+// { name, size, url }.
+export async function uploadLargeFile(guard, file, { onProgress } = {}) {
+  const contentType = file.type || "application/octet-stream";
+  const presign = await apiRequest(guard === "admin" ? "/v1/admin/uploads/presign" : "/v1/user/uploads/presign", {
+    method: "POST",
+    body: { filename: file.name, content_type: contentType },
+  });
+
+  // Exactly the signed headers plus Content-Type — anything extra breaks
+  // the signature. Browsers set Host themselves (and refuse to let us).
+  const headers = { "Content-Type": contentType };
+  Object.entries(presign.headers || {}).forEach(([name, values]) => {
+    if (name.toLowerCase() !== "host") headers[name] = Array.isArray(values) ? values[0] : values;
+  });
+
+  // XHR rather than fetch: fetch can't report upload progress.
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", presign.upload_url);
+    Object.entries(headers).forEach(([name, value]) => xhr.setRequestHeader(name, value));
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new ApiError(`The upload was rejected by storage (${xhr.status}). Please try again.`, xhr.status, null));
+    // Network drops and storage CORS refusals both surface here.
+    xhr.onerror = () => reject(new ApiError("The upload was interrupted. Check your connection and try again.", 0, null));
+    xhr.send(file);
+  });
+
+  return { name: file.name, size: file.size, url: presign.url };
 }

@@ -1,26 +1,16 @@
-import { apiRequest, ApiError } from "./client";
+import { apiRequest } from "./client";
 
-// One login endpoint for everyone: the backend checks admins first, then
-// users, and says which it matched via `type`. That type is the guard the
-// token belongs to, so /me and /logout must use the matching endpoints.
-//
-// The app has separate sign-in pages for admins and for learners/trainers,
-// so `portal` ("admin" | "user") says which kind of account this page
-// accepts. A match of the other kind has its fresh token revoked and is
-// rejected with a pointer to the right page.
+// Admins and learners/trainers are separate guards with separate login
+// endpoints, matching the app's two sign-in pages: `portal` "admin" uses
+// /admin/login (→ data.admin), anything else /login (→ data.user). The
+// guard decides which /me and /logout endpoints the token works with.
 export async function login(email, password, portal) {
-  const data = await apiRequest("/login", { method: "POST", body: { email, password }, auth: false });
-  const guard = data.type === "admin" ? "admin" : "user";
-  if (portal && guard !== portal) {
-    await logout(guard, data.token).catch(() => {});
-    throw new ApiError(
-      portal === "admin"
-        ? "This isn't an admin account. Learners and trainers sign in on the main login page."
-        : "This is an admin account. Please sign in on the admin login page.",
-      403,
-      null
-    );
-  }
+  const guard = portal === "admin" ? "admin" : "user";
+  const data = await apiRequest(guard === "admin" ? "/admin/login" : "/login", {
+    method: "POST",
+    body: { email, password },
+    auth: false,
+  });
   return { user: guard === "admin" ? data.admin : data.user, token: data.token, guard };
 }
 
