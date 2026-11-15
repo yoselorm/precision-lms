@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Layers, Settings2, Clock, Ban, CheckCircle2, PencilLine, Trash2 } from "lucide-react";
 import Header from "../components/Header";
 import CourseFormModal from "../components/CourseFormModal";
-import { selectCoursesByCreator, removeCourse } from "../store/slices/coursesSlice";
+import { selectCoursesByCreator, deleteCourse } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import { selectCurrentUser } from "../store/slices/authSlice";
@@ -17,8 +17,9 @@ const STATUS_META = {
 };
 
 // Published courses may already have enrolled learners, so only courses
-// that haven't gone live yet can be deleted.
-export const canDeleteCourse = (course) => ["draft", "pending", "denied"].includes(course.status);
+// that haven't gone live yet can be deleted — and only admins have a delete
+// endpoint in the API.
+export const canDeleteCourse = (course, user) => user?.role === "admin" && ["draft", "pending", "denied"].includes(course.status);
 
 export async function confirmDeleteCourse({ confirm, dispatch, course }) {
   const ok = await confirm({
@@ -28,7 +29,11 @@ export async function confirmDeleteCourse({ confirm, dispatch, course }) {
     tone: "danger",
   });
   if (!ok) return false;
-  dispatch(removeCourse({ courseId: course.id }));
+  const result = await dispatch(deleteCourse({ courseId: course.id }));
+  if (result.error) {
+    dispatch(pushToast({ type: "error", message: result.payload || "Couldn't delete the course." }));
+    return false;
+  }
   dispatch(pushToast({ type: "success", message: `"${course.title}" was deleted.` }));
   return true;
 }
@@ -77,7 +82,10 @@ export default function TrainerCourses({ onMenuClick }) {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {courses.map((c) => {
-                  const quizCount = c.topics.filter((t) => t.quiz?.questions?.length).length;
+                  // Topics are only loaded once a course is opened.
+                  const loaded = c.contentStatus === "succeeded";
+                  const topics = c.revision?.topics ?? c.topics;
+                  const quizCount = topics.filter((t) => t.quiz?.questions?.length).length;
                   const meta = STATUS_META[c.status || "approved"];
                   const StatusIcon = meta.icon;
                   return (
@@ -115,9 +123,9 @@ export default function TrainerCourses({ onMenuClick }) {
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-stone-500">{c.topics.length}</td>
-                      <td className="px-4 py-3 text-stone-500">{quizCount || "—"}</td>
-                      <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
+                      <td className="px-4 py-3 text-stone-500">{loaded ? topics.length : "—"}</td>
+                      <td className="px-4 py-3 text-stone-500">{loaded && quizCount ? quizCount : "—"}</td>
+                      <td className="px-4 py-3 text-stone-500">{c.studentsCount || "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1.5">
                           <button
@@ -126,7 +134,7 @@ export default function TrainerCourses({ onMenuClick }) {
                           >
                             <Settings2 size={11} /> {c.status === "draft" ? "Continue editing" : "Manage"}
                           </button>
-                          {canDeleteCourse(c) && (
+                          {canDeleteCourse(c, currentUser) && (
                             <button
                               onClick={() => confirmDeleteCourse({ confirm, dispatch, course: c })}
                               title="Delete course"

@@ -1,67 +1,75 @@
-import { createSlice, nanoid } from "@reduxjs/toolkit";
-import { mockUsers } from "../../data/mockData";
-
-const AVATAR_POOL = [2, 5, 8, 15, 20, 22, 27, 33, 36, 40, 44, 50, 56, 60, 65];
+import { createSlice } from "@reduxjs/toolkit";
+import * as api from "../../api/learning";
+import { register } from "../../api/auth";
+import { normalizeUser } from "../../api/normalize";
+import { apiThunk } from "../apiThunk";
+import { logout } from "./authSlice";
 
 const initialState = {
-  users: mockUsers,
+  // Learners and trainers — only admins can list them (GET /admin/users),
+  // so this stays empty for everyone else.
+  users: [],
+  status: "idle",
 };
+
+export const fetchUsers = apiThunk("users/fetch", () => api.listUsers());
+
+export const updateUserRole = apiThunk("users/setRole", ({ userId, role }) => api.setUserRole(userId, role));
+
+// There's no admin "create user" endpoint, so admins add people through
+// the public sign-up route; trainers are then approved straight away (they
+// sign up as pending). Doesn't touch the admin's own session.
+export const createUser = apiThunk("users/create", async ({ name, email, password, department, role }, { dispatch }) => {
+  const { user } = await register({ name, email, password, role, department });
+  if (role === "trainer" && user.status !== "approved") await api.setUserStatus(user.id, "approved");
+  await dispatch(fetchUsers());
+  return user;
+});
+
+// Approving/denying a trainer also emails them (server-side).
+export const setUserStatus = apiThunk("users/setStatus", ({ userId, status }) => api.setUserStatus(userId, status));
+
+function replace(state, apiUser) {
+  const user = normalizeUser(apiUser);
+  const index = state.users.findIndex((u) => u.id === user.id);
+  if (index === -1) state.users.push(user);
+  else state.users[index] = user;
+}
 
 const usersSlice = createSlice({
   name: "users",
   initialState,
-  reducers: {
-    addUser: {
-      reducer(state, action) {
-        state.users.push(action.payload);
-      },
-      prepare({ name, email, password, department, role, managerId, status }) {
-        const avatarSeed = AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
-        return {
-          payload: {
-            id: `u-${nanoid(6)}`,
-            name,
-            email: email || "",
-            password: password || "",
-            department,
-            role,
-            managerId: managerId || null,
-            avatarColor: "#57534e",
-            avatarUrl: `https://i.pravatar.cc/150?img=${avatarSeed}`,
-            points: 0,
-            streakDays: 0,
-            // Learners/admins are active immediately. Trainer signups sit as
-            // "pending" until an admin approves them.
-            status: status || (role === "trainer" ? "pending" : "approved"),
-          },
-        };
-      },
-    },
-    updateUserRole(state, action) {
-      const { userId, role } = action.payload;
-      const user = state.users.find((u) => u.id === userId);
-      if (user) user.role = role;
-    },
-    setUserStatus(state, action) {
-      const { userId, status } = action.payload;
-      const user = state.users.find((u) => u.id === userId);
-      if (user) user.status = status;
-    },
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchUsers.pending, (state) => {
+        state.status = "loading";
+      })
+      .addCase(fetchUsers.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        state.users = action.payload.map((u) => normalizeUser(u));
+      })
+      .addCase(fetchUsers.rejected, (state) => {
+        state.status = "failed";
+      })
+      .addCase(updateUserRole.fulfilled, (state, action) => replace(state, action.payload))
+      .addCase(setUserStatus.fulfilled, (state, action) => replace(state, action.payload))
+      .addCase(logout, () => initialState);
   },
 });
 
-export const { addUser, updateUserRole, setUserStatus } = usersSlice.actions;
 export default usersSlice.reducer;
 
 export const selectAllUsers = (state) => state.users.users;
-export const selectUserById = (state, userId) => state.users.users.find((u) => u.id === userId);
+export const selectUsersStatus = (state) => state.users.status;
+export const selectUserById = (state, userId) =>
+  state.users.users.find((u) => u.id === userId) || (state.auth.currentUser?.id === userId ? state.auth.currentUser : undefined);
 export const selectUserByEmail = (state, email) =>
   state.users.users.find((u) => (u.email || "").toLowerCase() === (email || "").toLowerCase());
-export const selectTeamByManager = (state, managerId) =>
-  state.users.users.filter((u) => u.managerId === managerId);
+export const selectTeamByManager = (state, managerId) => state.users.users.filter((u) => u.managerId === managerId);
 export const selectTrainers = (state) => state.users.users.filter((u) => u.role === "trainer");
 export const selectApprovedTrainers = (state) =>
-  state.users.users.filter((u) => u.role === "trainer" && (u.status || "approved") === "approved");
+  state.users.users.filter((u) => u.role === "trainer" && u.status === "approved");
 export const selectPendingTrainers = (state) =>
   state.users.users.filter((u) => u.role === "trainer" && u.status === "pending");
 export const selectLearners = (state) => state.users.users.filter((u) => u.role === "learner");

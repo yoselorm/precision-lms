@@ -21,8 +21,11 @@ import {
   X,
   Eye,
   LogIn,
+  KeyRound,
+  History,
 } from "lucide-react";
-import { selectCurrentUser, selectRealUser, switchDemoUser, stopPreview, logout } from "../store/slices/authSlice";
+import { selectCurrentUser, selectRealUser, startPreview, stopPreview, logoutUser } from "../store/slices/authSlice";
+import { pushToast } from "../store/slices/uiSlice";
 import { selectAllUsers } from "../store/slices/usersSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
@@ -42,6 +45,8 @@ const adminLinks = [
   { to: "/admin/classes", label: "Classes", icon: CalendarDays },
   { to: "/admin/certificates", label: "Certificates", icon: Award },
   { to: "/admin/enroll", label: "Enroll users", icon: ClipboardList },
+  { to: "/admin/roles", label: "Roles & permissions", icon: KeyRound },
+  { to: "/admin/audit-log", label: "Audit log", icon: History },
 ];
 
 export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
@@ -74,9 +79,11 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
     links.splice(1, 0, { to: "/trainer/courses", label: "Courses", icon: BookMarked });
   }
 
+  // Send people back to the sign-in page for their kind of account.
   const handleLogout = () => {
-    dispatch(logout());
-    navigate("/login");
+    const signInPage = (realUser ?? currentUser).role === "admin" ? "/admin/login" : "/login";
+    dispatch(logoutUser());
+    navigate(signInPage);
   };
 
   return (
@@ -209,12 +216,16 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
                 <div className="relative mb-2">
                   <select
                     value={currentUser.id}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const user = allUsers.find((u) => u.id === e.target.value);
-                      if (user) dispatch(switchDemoUser(user));
+                      if (!user) return;
+                      const result = await dispatch(startPreview({ userId: user.id }));
+                      if (result.error) dispatch(pushToast({ type: "error", message: result.payload || "Couldn't start the preview." }));
+                      else navigate("/");
                     }}
                     className="w-full appearance-none rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none cursor-pointer backdrop-blur-sm focus:border-white/40 [&>option]:text-stone-800"
                   >
+                    {!realUser && <option value={currentUser.id}>{currentUser.name} — you</option>}
                     {allUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name} — {u.role}

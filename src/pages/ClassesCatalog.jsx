@@ -4,9 +4,8 @@ import { useSelector } from "react-redux";
 import { CalendarDays, Users, GraduationCap, Settings2, CheckCircle2, Plus } from "lucide-react";
 import Header from "../components/Header";
 import ClassFormModal from "../components/ClassFormModal";
-import { selectAllClasses } from "../store/slices/classesSlice";
+import { selectAllClasses, selectClassesStatus } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
-import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 
 const STATUS_STYLES = {
@@ -31,10 +30,11 @@ export default function ClassesCatalog({ onMenuClick }) {
   const navigate = useNavigate();
   const allClasses = useSelector(selectAllClasses);
   const courses = useSelector(selectAllCourses);
-  const users = useSelector(selectAllUsers);
   const currentUser = useSelector(selectCurrentUser);
+  const status = useSelector(selectClassesStatus);
   const [showForm, setShowForm] = useState(false);
-  const canCreate = currentUser.role === "admin" || currentUser.role === "trainer";
+  // Only trainers can create classes in the API.
+  const canCreate = currentUser.role === "trainer";
 
   // Admins see the whole org's cohorts; trainers only the ones they teach.
   // Learners now see the full browsable list too — enrollment is
@@ -62,14 +62,14 @@ export default function ClassesCatalog({ onMenuClick }) {
       <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:p-8">
         {classes.map((cls) => {
           const classCourses = (cls.courses || []).map((cc) => courses.find((c) => c.id === cc.courseId)).filter(Boolean);
-          const courseSummary =
-            classCourses.length === 0
+          // The list response omits courses; the class page shows them.
+          const courseSummary = !cls.courses
+            ? null
+            : classCourses.length === 0
               ? "No courses attached"
               : classCourses.length === 1
               ? classCourses[0].title
               : `${classCourses[0].title} +${classCourses.length - 1} more`;
-          const trainer = users.find((u) => u.id === cls.trainerId);
-          const members = users.filter((u) => cls.memberIds.includes(u.id));
           const isMember = cls.memberIds.includes(currentUser.id);
 
           return (
@@ -100,7 +100,7 @@ export default function ClassesCatalog({ onMenuClick }) {
 
               <h3 className="text-sm font-bold text-stone-900 leading-snug">{cls.title}</h3>
               {cls.description && <p className="mt-1 line-clamp-2 text-xs text-stone-500">{cls.description}</p>}
-              <p className="mt-0.5 text-xs text-stone-500">{courseSummary}</p>
+              {courseSummary && <p className="mt-0.5 text-xs text-stone-500">{courseSummary}</p>}
 
               <div className="mt-3 space-y-1.5 text-xs text-stone-500">
                 <p className="flex items-center gap-1.5">
@@ -109,22 +109,11 @@ export default function ClassesCatalog({ onMenuClick }) {
                   {new Date(cls.endDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                 </p>
                 <p className="flex items-center gap-1.5">
-                  <GraduationCap size={12} /> Trainer: {trainer?.name ?? "Unassigned"}
+                  <GraduationCap size={12} /> Trainer: {cls.trainerName ?? "Unassigned"}
                 </p>
                 <p className="flex items-center gap-1.5">
-                  <Users size={12} /> {members.length} learners
+                  <Users size={12} /> {cls.memberCount} learner{cls.memberCount === 1 ? "" : "s"}
                 </p>
-              </div>
-
-              <div className="mt-3 flex -space-x-2">
-                {members.slice(0, 5).map((m) => (
-                  <img key={m.id} src={m.avatarUrl} alt={m.name} title={m.name} className="h-7 w-7 rounded-full border-2 border-white object-cover" />
-                ))}
-                {members.length > 5 && (
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-stone-100 text-[10px] font-bold text-stone-500">
-                    +{members.length - 5}
-                  </span>
-                )}
               </div>
 
               {(currentUser.role === "admin" || currentUser.id === cls.trainerId) && (
@@ -143,7 +132,9 @@ export default function ClassesCatalog({ onMenuClick }) {
         })}
 
         {classes.length === 0 && (
-          <p className="text-sm text-stone-400">{EMPTY_MESSAGE[currentUser.role] ?? EMPTY_MESSAGE.admin}</p>
+          <p className="text-sm text-stone-400">
+            {status === "loading" ? "Loading classes..." : EMPTY_MESSAGE[currentUser.role] ?? EMPTY_MESSAGE.admin}
+          </p>
         )}
       </div>
 

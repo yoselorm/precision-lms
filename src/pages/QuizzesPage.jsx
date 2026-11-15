@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { BookOpen, CalendarDays, CheckCircle2, Clock, Eye, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -6,8 +6,9 @@ import Header from "../components/Header";
 import QuizBuilder from "../components/QuizBuilder";
 import QuizPreview from "../components/QuizPreview";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectAllCourses, setTopicQuiz, removeTopicQuiz, editableTopicsOf } from "../store/slices/coursesSlice";
-import { selectAllClasses, setClassQuiz, removeClassQuiz } from "../store/slices/classesSlice";
+import { selectAllCourses, saveTopicQuiz, removeTopicQuiz, editableTopicsOf, fetchCourseContent } from "../store/slices/coursesSlice";
+import { selectAllClasses, setClassQuiz, removeClassQuiz, fetchClass } from "../store/slices/classesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -88,7 +89,10 @@ function Tabs({ tabs, value, onChange }) {
 // belongs to — a topic within a course, or a particular class. When editing,
 // that target is fixed.
 function QuizEditorModal({ courses, classes, editing, onClose }) {
-  const dispatch = useDispatch();
+  const [run, saving] = useApiAction();
+  // Saved quizzes come back without their correct answers, so an edit
+  // starts from a blank question list and replaces the quiz on save.
+  const answersUnknown = !!editing && editing.quiz.answersKnown === false;
   const courseOptions = courses.filter((c) => c.topics.length > 0);
 
   const [type, setType] = useState(editing?.type || "course");
@@ -106,7 +110,7 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
   const [timeLimitMins, setTimeLimitMins] = useState(editing?.quiz.timeLimitMins || "");
   const [maxAttempts, setMaxAttempts] = useState(editing?.quiz.maxAttempts || "");
   const [showAnswers, setShowAnswers] = useState(editing ? editing.quiz.showAnswers !== false : true);
-  const [questions, setQuestions] = useState(editing?.quiz.questions || []);
+  const [questions, setQuestions] = useState(answersUnknown ? [] : editing?.quiz.questions || []);
 
   const selectedCourse = courses.find((c) => c.id === courseId);
   const selectedTopics = selectedCourse?.topics || [];
@@ -118,24 +122,23 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
   };
 
   const targetChosen = type === "course" ? !!(courseId && topicId) : !!classId;
-  const canSave = targetChosen && questions.length > 0;
+  const canSave = targetChosen && questions.length > 0 && !saving;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
-    const payload = { title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions };
-    if (type === "course") {
-      const revision = !!selectedCourse?.isLiveForTrainer;
-      dispatch(setTopicQuiz({ courseId, topicId, ...payload, revision }));
-      if (revision) {
-        dispatch(pushToast({ type: "success", message: "Quiz saved to your course update — submit the update for approval from the course page." }));
-        onClose();
-        return;
-      }
-    } else {
-      dispatch(setClassQuiz({ classId, ...payload }));
-    }
-    dispatch(pushToast({ type: "success", message: editing ? "Quiz updated." : "Quiz created." }));
-    onClose();
+    const quiz = { title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions };
+    const liveUpdate = type === "course" && !!selectedCourse?.isLiveForTrainer;
+    const ok =
+      type === "course"
+        ? await run(saveTopicQuiz({ courseId, topicId, quiz }), {
+            successMessage: liveUpdate
+              ? "Quiz saved to your course update — submit the update for approval from the course page."
+              : editing
+              ? "Quiz updated."
+              : "Quiz created.",
+          })
+        : await run(setClassQuiz({ classId, ...quiz }), { successMessage: editing ? "Quiz updated." : "Quiz created." });
+    if (ok) onClose();
   };
 
   return (
@@ -267,6 +270,12 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
           </div>
 
           <div className="border-t border-stone-100 pt-4">
+            {answersUnknown && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                The server doesn't send back a saved quiz's correct answers, so add the questions again and mark their answers. Saving
+                replaces the current {editing.quiz.questions.length}-question quiz.
+              </p>
+            )}
             <QuizBuilder
               passingScore={passingScore}
               onPassingScoreChange={setPassingScore}
@@ -328,6 +337,7 @@ function QuizPreviewModal({ row, onClose }) {
 // the trainers' job.
 function QuizManager({ currentUser }) {
   const dispatch = useDispatch();
+  const [run] = useApiAction();
   const confirm = useConfirm();
   const allCourses = useSelector(selectAllCourses);
   const allClasses = useSelector(selectAllClasses);
@@ -347,11 +357,20 @@ function QuizManager({ currentUser }) {
         ? allCourses
         : allCourses
             .filter((c) => c.createdBy === currentUser.id)
-            .map((c) =>
-              (c.status || "approved") === "approved" ? { ...c, topics: editableTopicsOf(c), isLiveForTrainer: true } : c
-            ),
+            .map((c) => (c.status === "approved" ? { ...c, topics: editableTopicsOf(c), isLiveForTrainer: true } : c)),
     [isAdmin, allCourses, currentUser.id]
   );
+
+  // Quizzes live on topics and classes, which the lists don't include —
+  // load each of the trainer's courses and classes. (Admins can't read
+  // quizzes from the API at all.)
+  const courseIds = courses.map((c) => c.id).join(",");
+  const classIds = classes.map((c) => c.id).join(",");
+  useEffect(() => {
+    if (isAdmin) return;
+    courseIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchCourseContent(id)));
+    classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
+  }, [dispatch, isAdmin, courseIds, classIds]);
 
   const rows = collectQuizzes(courses, classes);
   const visible = filter === "all" ? rows : rows.filter((r) => r.type === filter);
@@ -371,9 +390,9 @@ function QuizManager({ currentUser }) {
       tone: "danger",
     });
     if (!ok) return;
-    if (row.type === "course") dispatch(removeTopicQuiz({ courseId: row.course.id, topicId: row.topic.id, revision: !!row.course.isLiveForTrainer }));
-    else dispatch(removeClassQuiz({ classId: row.cls.id }));
-    dispatch(pushToast({ type: "success", message: "Quiz deleted." }));
+    const action =
+      row.type === "course" ? removeTopicQuiz({ courseId: row.course.id, topicId: row.topic.id }) : removeClassQuiz({ classId: row.cls.id });
+    await run(action, { successMessage: "Quiz deleted." });
   };
 
   return (
@@ -481,6 +500,7 @@ function QuizManager({ currentUser }) {
 // they're enrolled in, plus the quizzes of classes they belong to.
 function LearnerQuizzes({ currentUser }) {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const allCourses = useSelector(selectAllCourses);
   const allClasses = useSelector(selectAllClasses);
   const enrollments = useSelector(selectAllEnrollments).filter((e) => e.userId === currentUser.id);
@@ -490,6 +510,13 @@ function LearnerQuizzes({ currentUser }) {
   const enrolledIds = new Set(enrollments.map((e) => e.courseId));
   const courses = allCourses.filter((c) => enrolledIds.has(c.id));
   const classes = allClasses.filter((c) => c.memberIds.includes(currentUser.id));
+
+  // Class quizzes load with each class's detail. Course quizzes can't be
+  // found for learners yet — the API doesn't list a course's topics to them.
+  const classIds = classes.map((c) => c.id).join(",");
+  useEffect(() => {
+    classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
+  }, [dispatch, classIds]);
 
   const rows = collectQuizzes(courses, classes).map((row) => {
     const attempts =

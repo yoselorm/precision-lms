@@ -5,7 +5,8 @@ import { X, Tag, Gift, Film } from "lucide-react";
 import ThumbnailPicker from "./ThumbnailPicker";
 import FileOrUrlInput from "./FileOrUrlInput";
 import RichTextEditor from "./RichTextEditor";
-import { addCourse } from "../store/slices/coursesSlice";
+import { createCourse, updateCourse } from "../store/slices/coursesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { selectCategories } from "../store/slices/categoriesSlice";
@@ -31,23 +32,38 @@ const FieldError = ({ children }) => (children ? <p className="mt-1 text-xs font
 // Shell-only "Add course" form shared by admins and trainers. Every course
 // starts as a draft owned by a trainer, who builds its content and submits
 // it for approval — when an admin creates one, they assign it to a trainer.
-export default function CourseFormModal({ onClose, onCreated }) {
+// Pass `editing` (a course) to edit its details instead; the owner is then
+// changed from the course list, not here.
+export default function CourseFormModal({ onClose, onCreated, editing }) {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const isTrainer = currentUser.role === "trainer";
   const trainers = useSelector(selectApprovedTrainers);
   const categories = useSelector(selectCategories);
   const [trainerId, setTrainerId] = useState(trainers[0]?.id ?? "");
-  const [form, setForm] = useState({
-    title: "",
-    category: "",
-    pricing: "free",
-    price: "",
-    description: "",
-    thumbnailImage: "",
-    demoVideoUrl: "",
-  });
+  const [form, setForm] = useState(() =>
+    editing
+      ? {
+          title: editing.title,
+          category: editing.categoryId || "",
+          pricing: editing.price > 0 ? "paid" : "free",
+          price: editing.price > 0 ? String(editing.price) : "",
+          description: editing.description,
+          thumbnailImage: editing.thumbnailImage,
+          demoVideoUrl: editing.demoVideoUrl,
+        }
+      : {
+          title: "",
+          category: "",
+          pricing: "free",
+          price: "",
+          description: "",
+          thumbnailImage: "",
+          demoVideoUrl: "",
+        }
+  );
   const [errors, setErrors] = useState({});
+  const [run, saving] = useApiAction();
 
   const update = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -64,22 +80,26 @@ export default function CourseFormModal({ onClose, onCreated }) {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
+    const fields = {
+      title: form.title.trim(),
+      categoryId: form.category,
+      description: form.description,
+      thumbnailImage: form.thumbnailImage,
+      thumbnailColor: editing?.thumbnailColor,
+      demoVideoUrl: form.demoVideoUrl,
+      price: form.pricing === "paid" ? Number(form.price) : 0,
+    };
+    if (editing) {
+      const saved = await run(updateCourse({ courseId: editing.id, ...fields }), { successMessage: `"${fields.title}" was updated.` });
+      if (saved) onClose();
+      return;
+    }
     const ownerId = isTrainer ? currentUser.id : trainerId || null;
-    const action = dispatch(
-      addCourse({
-        title: form.title.trim(),
-        category: form.category,
-        description: form.description,
-        thumbnailImage: form.thumbnailImage,
-        demoVideoUrl: form.demoVideoUrl,
-        price: form.pricing === "paid" ? Number(form.price) : 0,
-        creatorId: ownerId,
-        status: "draft",
-      })
-    );
+    const created = await run(createCourse({ ...fields, createdBy: ownerId }));
+    if (!created) return;
     const owner = trainers.find((t) => t.id === ownerId);
     dispatch(
       pushToast({
@@ -92,7 +112,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
       })
     );
     onClose();
-    onCreated?.(action.payload.id);
+    onCreated?.(created.id);
   };
 
   return (
@@ -100,7 +120,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
       <form onSubmit={handleSubmit} noValidate className="max-h-[92vh] w-full max-w-3xl animate-scale-in overflow-y-auto rounded-2xl bg-white p-6 sm:p-8">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-stone-900">Add a new course</h2>
+            <h2 className="text-lg font-bold text-stone-900">{editing ? "Edit course details" : "Add a new course"}</h2>
             <p className="mt-0.5 text-xs text-stone-400">
               Fields marked <span className="text-rose-500">*</span> are required.
             </p>
@@ -110,7 +130,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
           </button>
         </div>
 
-        {isTrainer ? (
+        {editing ? null : isTrainer ? (
           <p className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-800">
             Your course starts as a draft. Add its topics and lessons, then submit it for admin approval before learners can see it in
             the catalog.
@@ -123,7 +143,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
         )}
 
         <div className="space-y-5">
-          {!isTrainer && (
+          {!isTrainer && !editing && (
             <div>
               <Label optional>Assign to trainer</Label>
               <select value={trainerId} onChange={(e) => setTrainerId(e.target.value)} className={`${inputClass} ${borderFor(false)}`}>
@@ -162,7 +182,7 @@ export default function CourseFormModal({ onClose, onCreated }) {
                     Choose a category
                   </option>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.name}>
+                    <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
@@ -239,8 +259,8 @@ export default function CourseFormModal({ onClose, onCreated }) {
             <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">
               Cancel
             </button>
-            <button type="submit" className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800">
-              Create course
+            <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+              {saving ? "Saving..." : editing ? "Save changes" : "Create course"}
             </button>
           </div>
         </div>

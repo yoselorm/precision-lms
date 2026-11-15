@@ -1,13 +1,11 @@
-// Persists the whole Redux store to localStorage so the app survives a
-// refresh instead of resetting to the seeded mock data every time — the
-// closest a pure-frontend demo can get to "feels like it has a backend".
+// Persists the signed-in session (and a little per-user state the API can't
+// give back) to localStorage so a refresh doesn't sign the user out.
+// Everything else is refetched from the API on load.
 //
-// SCHEMA_VERSION must bump any time the shape of seeded data in mockData.js
-// changes (new fields, more quiz questions, etc.) — otherwise everyone who
-// already has a persisted session keeps seeing their old cached copy of the
-// courses/quizzes forever, silently masking any content/shape update.
+// SCHEMA_VERSION must bump whenever the persisted shape changes, so stale
+// saved state is discarded instead of loaded into the wrong shape.
 const STORAGE_KEY = "afenet-lms:store";
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 13;
 
 export function loadState() {
   try {

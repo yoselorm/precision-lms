@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { Clock, Users, Layers } from "lucide-react";
+import { Clock, Users, Layers, Tag } from "lucide-react";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import CircularProgress from "./CircularProgress";
 import StatusBadge from "./StatusBadge";
@@ -42,15 +42,25 @@ export default function CourseCard({ course, enrollment }) {
         <h3 className="text-sm font-bold leading-snug text-stone-900 line-clamp-2">{course.title}</h3>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-400">
+          {/* Topic and student counts aren't in the course list response. */}
+          {course.contentStatus === "succeeded" && (
+            <span className="flex items-center gap-1">
+              <Layers size={11} /> {course.topics.length} Topics
+            </span>
+          )}
+          {course.studentsCount > 0 && (
+            <span className="flex items-center gap-1">
+              <Users size={11} /> +{course.studentsCount} Students
+            </span>
+          )}
           <span className="flex items-center gap-1">
-            <Layers size={11} /> {course.topics.length} Topics
+            <Tag size={11} /> {course.category}
           </span>
-          <span className="flex items-center gap-1">
-            <Users size={11} /> +{course.studentsCount} Students
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock size={11} /> {course.durationMins} min
-          </span>
+          {course.durationMins > 0 && (
+            <span className="flex items-center gap-1">
+              <Clock size={11} /> {course.durationMins} min
+            </span>
+          )}
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">

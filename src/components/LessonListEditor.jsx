@@ -1,12 +1,11 @@
-import React, { useRef, useState } from "react";
-import { useDispatch } from "react-redux";
-import { Plus, Trash2, PlayCircle, FileText, File, GripVertical, Paperclip, X, Link2 } from "lucide-react";
+import React, { useState } from "react";
+import { Plus, Trash2, PlayCircle, FileText, File, GripVertical, Paperclip, Loader2 } from "lucide-react";
 import FileOrUrlInput from "./FileOrUrlInput";
-import { addLessonToTopic, removeLessonFromTopic } from "../store/slices/coursesSlice";
+import { addLesson as addLessonThunk, removeLesson as removeLessonThunk } from "../store/slices/coursesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 
-const empty = { title: "", description: "", type: "video", durationMins: 10, videoUrl: "", body: "", fileUrl: "", resources: [] };
+const empty = { title: "", description: "", type: "video", durationMins: 10, videoUrl: "", body: "", fileUrl: "" };
 const LESSON_ICONS = { video: PlayCircle, text: FileText, document: File };
-const RESOURCE_TYPES = ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z";
 
 const fieldClass = "w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs outline-none focus:border-brand-600";
 
@@ -16,116 +15,22 @@ export function formatFileSize(bytes) {
   return kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`;
 }
 
-// Extra downloads attached to a lesson (PDFs, slides, spreadsheets, zips…),
-// either uploaded or linked by URL.
-function ResourcePicker({ resources, onChange }) {
-  const inputRef = useRef(null);
-  const [linkUrl, setLinkUrl] = useState(null);
-
-  const addFiles = (files) => {
-    const added = [...files].map((f) => ({ name: f.name, url: URL.createObjectURL(f), size: f.size }));
-    onChange([...resources, ...added]);
-  };
-
-  const addLink = () => {
-    const url = linkUrl?.trim();
-    setLinkUrl(null);
-    if (!url) return;
-    const href = /^https?:/i.test(url) ? url : `https://${url}`;
-    onChange([...resources, { name: href.split("/").pop() || href, url: href, size: 0 }]);
-  };
-
-  return (
-    <div>
-      <label className="mb-1 block text-[11px] font-semibold text-stone-600">
-        Resources <span className="font-normal text-stone-400">(optional — PDFs, docs, slides, zip files…)</span>
-      </label>
-      {resources.length > 0 && (
-        <ul className="mb-2 space-y-1">
-          {resources.map((r, i) => (
-            <li key={`${r.url}-${i}`} className="flex items-center gap-2 rounded-md bg-stone-100 px-2 py-1 text-[11px] text-stone-600">
-              <Paperclip size={11} className="shrink-0 text-stone-400" />
-              <span className="flex-1 truncate">{r.name}</span>
-              {r.size > 0 && <span className="shrink-0 text-stone-400">{formatFileSize(r.size)}</span>}
-              <button type="button" onClick={() => onChange(resources.filter((_, j) => j !== i))} className="shrink-0 text-stone-400 hover:text-rose-600">
-                <X size={11} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="flex items-center gap-1 rounded-lg border border-dashed border-stone-300 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 hover:border-brand-500 hover:text-brand-700"
-        >
-          <Paperclip size={12} /> Attach files
-        </button>
-        {linkUrl === null ? (
-          <button
-            type="button"
-            onClick={() => setLinkUrl("")}
-            className="flex items-center gap-1 rounded-lg border border-dashed border-stone-300 px-2.5 py-1.5 text-[11px] font-medium text-stone-600 hover:border-brand-500 hover:text-brand-700"
-          >
-            <Link2 size={12} /> Add link
-          </button>
-        ) : (
-          <div className="flex min-w-[220px] flex-1 items-center gap-1.5">
-            <input
-              autoFocus
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addLink();
-                }
-                if (e.key === "Escape") setLinkUrl(null);
-              }}
-              placeholder="https://… link to a file"
-              className={fieldClass}
-            />
-            <button type="button" onClick={addLink} className="shrink-0 rounded-md bg-brand-700 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-800">
-              Add
-            </button>
-          </div>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept={RESOURCE_TYPES}
-          className="hidden"
-          onChange={(e) => {
-            addFiles(e.target.files || []);
-            e.target.value = "";
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
 // Manages a topic's lessons (video, text, or document) — lists what's
 // already there and offers a draft-list-then-add form to append more.
 // Lives one level under CourseTopicsManager, one instance per topic.
 // `readOnly` lists the lessons without any editing controls.
-export default function LessonListEditor({ courseId, topicId, lessons, readOnly = false, revision = false }) {
-  const dispatch = useDispatch();
+export default function LessonListEditor({ courseId, topicId, lessons, readOnly = false }) {
+  const [run, busy] = useApiAction();
   const [draft, setDraft] = useState(empty);
 
   const updateDraft = (field, value) => setDraft((prev) => ({ ...prev, [field]: value }));
 
-  const addLesson = () => {
+  const addLesson = async () => {
     if (!draft.title.trim()) return;
-    dispatch(addLessonToTopic({ courseId, topicId, ...draft, revision }));
-    setDraft(empty);
+    if (await run(addLessonThunk({ courseId, topicId, ...draft, title: draft.title.trim() }))) setDraft(empty);
   };
 
-  const removeLesson = (lessonId) => {
-    dispatch(removeLessonFromTopic({ courseId, topicId, lessonId, revision }));
-  };
+  const removeLesson = (lessonId) => run(removeLessonThunk({ courseId, lessonId }));
 
   return (
     <div>
@@ -148,7 +53,7 @@ export default function LessonListEditor({ courseId, topicId, lessons, readOnly 
                   )}
                   <span className="shrink-0 text-[10px] text-stone-400">{l.durationMins} min</span>
                   {!readOnly && (
-                    <button type="button" onClick={() => removeLesson(l.id)} className="shrink-0 text-stone-400 hover:text-rose-600">
+                    <button type="button" onClick={() => removeLesson(l.id)} disabled={busy} className="shrink-0 text-stone-400 hover:text-rose-600 disabled:opacity-40">
                       <Trash2 size={13} />
                     </button>
                   )}
@@ -217,16 +122,14 @@ export default function LessonListEditor({ courseId, topicId, lessons, readOnly 
             />
           )}
 
-          <ResourcePicker resources={draft.resources} onChange={(v) => updateDraft("resources", v)} />
-
           <div className="flex justify-start border-t border-stone-100 pt-3">
             <button
               type="button"
               onClick={addLesson}
-              disabled={!draft.title.trim()}
+              disabled={busy || !draft.title.trim()}
               className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Plus size={13} /> Add lesson
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add lesson
             </button>
           </div>
         </div>

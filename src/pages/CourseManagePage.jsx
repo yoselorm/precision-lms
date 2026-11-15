@@ -1,19 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ArrowLeft, Clock, Ban, CheckCircle2, Circle, PencilLine, Send, Trash2, Radio, Undo2 } from "lucide-react";
+import { ArrowLeft, Clock, Ban, CheckCircle2, Circle, PencilLine, Send, Trash2, Radio, Undo2, Loader2, Settings2 } from "lucide-react";
 import Header from "../components/Header";
 import CourseTopicsManager from "../components/CourseTopicsManager";
+import CourseFormModal from "../components/CourseFormModal";
 import {
   selectCourseById,
-  setCourseStatus,
-  submitCourseUpdate,
-  discardCourseUpdate,
-  editableTopicsOf,
+  selectCoursesStatus,
+  fetchCourseContent,
+  submitCourse,
+  startRevision,
+  submitRevision,
+  discardRevision,
 } from "../store/slices/coursesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
-import { confirmDeleteCourse } from "./TrainerCourses";
+import { confirmDeleteCourse, canDeleteCourse } from "./TrainerCourses";
 import { useConfirm } from "../components/ConfirmDialog";
 
 // What a course (or an update to a live one) needs before it can go to an
@@ -55,17 +59,25 @@ function FeedbackBox({ review }) {
 }
 
 // Shown to the trainer on a course that's already live: edits are saved as
-// an update that learners don't see until an admin approves it.
-function LiveUpdatePanel({ course, onSubmit, onDiscard }) {
+// an update (a server-side revision) that learners don't see until an admin
+// approves it. Editing starts by opening that revision.
+function LiveUpdatePanel({ course, onStart, onSubmit, onDiscard, busy }) {
   const revision = course.revision;
   if (!revision) {
     return (
-      <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800">
-        <Radio size={14} className="mt-0.5 shrink-0" />
-        <span>
-          This course is live. Any changes you make below are saved as an update — learners keep seeing the current version until an
-          admin approves it.
+      <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 sm:flex-row sm:items-center">
+        <span className="flex flex-1 items-start gap-2">
+          <Radio size={14} className="mt-0.5 shrink-0" />
+          This course is live. To change its content, start an update — learners keep seeing the current version until an admin
+          approves it.
         </span>
+        <button
+          onClick={onStart}
+          disabled={busy || course.contentStatus !== "succeeded"}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <PencilLine size={13} />} Edit course content
+        </button>
       </div>
     );
   }
@@ -96,7 +108,7 @@ function LiveUpdatePanel({ course, onSubmit, onDiscard }) {
         {revision.status !== "pending" && (
           <button
             onClick={onSubmit}
-            disabled={!ready}
+            disabled={busy || !ready}
             title={ready ? undefined : "Complete the checklist first"}
             className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -105,7 +117,8 @@ function LiveUpdatePanel({ course, onSubmit, onDiscard }) {
         )}
         <button
           onClick={onDiscard}
-          className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50"
         >
           <Undo2 size={13} /> Discard changes
         </button>
@@ -125,7 +138,7 @@ function DeleteCourseButton({ onDelete }) {
   );
 }
 
-function DraftChecklist({ course, onSaveDraft, onSubmit, onDelete }) {
+function DraftChecklist({ course, onSaveDraft, onSubmit, onDelete, busy }) {
   const checks = getReadinessChecks(course.topics);
   const ready = checks.every((c) => c.done);
   const denied = course.status === "denied";
@@ -153,15 +166,17 @@ function DraftChecklist({ course, onSaveDraft, onSubmit, onDelete }) {
         </button>
         <button
           onClick={onSubmit}
-          disabled={!ready}
+          disabled={busy || !ready}
           title={ready ? undefined : "Complete the checklist first"}
           className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Send size={13} /> Submit for approval
         </button>
-        <span className="ml-auto">
-          <DeleteCourseButton onDelete={onDelete} />
-        </span>
+        {onDelete && (
+          <span className="ml-auto">
+            <DeleteCourseButton onDelete={onDelete} />
+          </span>
+        )}
       </div>
     </div>
   );
@@ -178,11 +193,27 @@ export default function CourseManagePage({ onMenuClick }) {
   const confirm = useConfirm();
   const currentUser = useSelector(selectCurrentUser);
   const course = useSelector((state) => selectCourseById(state, courseId));
+  const coursesStatus = useSelector(selectCoursesStatus);
+  const [run, busy] = useApiAction();
   const [showProposed, setShowProposed] = useState(true);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const courseLoaded = !!course;
+
+  useEffect(() => {
+    if (courseLoaded) dispatch(fetchCourseContent(courseId));
+  }, [dispatch, courseId, courseLoaded]);
   const isAdmin = currentUser.role === "admin";
   const backTo = isAdmin ? "/admin/courses" : "/trainer/courses";
   const backLabel = isAdmin ? "Back to courses" : "Back to my courses";
   // Admins oversee course content but don't author it — trainers do.
+
+  if (!course && (coursesStatus === "idle" || coursesStatus === "loading")) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center gap-2 text-sm text-stone-400">
+        <Loader2 size={16} className="animate-spin" /> Loading course...
+      </div>
+    );
+  }
 
   if (!course) {
     return (
@@ -210,7 +241,8 @@ export default function CourseManagePage({ onMenuClick }) {
     if (await confirmDeleteCourse({ confirm, dispatch, course })) navigate(backTo);
   };
 
-  const isLive = (course.status || "approved") === "approved";
+  const isLive = course.status === "approved";
+  const allowDelete = canDeleteCourse(course, currentUser);
   const viewingProposed = isAdmin && !!course.revision && showProposed;
 
   const saveDraft = async () => {
@@ -231,8 +263,9 @@ export default function CourseManagePage({ onMenuClick }) {
       confirmLabel: "Submit for approval",
     });
     if (!ok) return;
-    dispatch(setCourseStatus({ courseId: course.id, status: "pending" }));
-    dispatch(pushToast({ type: "success", message: `"${course.title}" was submitted for admin approval.` }));
+    await run(submitCourse({ courseId: course.id }), { successMessage: `"${course.title}" was submitted for admin approval.` });
+    // Pending content isn't readable by its trainer — reflect that.
+    dispatch(fetchCourseContent(course.id));
   };
 
   const submitUpdate = async () => {
@@ -242,9 +275,12 @@ export default function CourseManagePage({ onMenuClick }) {
       confirmLabel: "Submit update",
     });
     if (!ok) return;
-    dispatch(submitCourseUpdate({ courseId: course.id }));
-    dispatch(pushToast({ type: "success", message: "Update submitted for admin approval." }));
+    await run(submitRevision({ courseId: course.id, revisionId: course.revision.id }), {
+      successMessage: "Update submitted for admin approval.",
+    });
   };
+
+  const startUpdate = () => run(startRevision({ courseId: course.id }));
 
   const discardUpdate = async () => {
     const ok = await confirm({
@@ -254,8 +290,7 @@ export default function CourseManagePage({ onMenuClick }) {
       tone: "danger",
     });
     if (!ok) return;
-    dispatch(discardCourseUpdate({ courseId: course.id }));
-    dispatch(pushToast({ type: "success", message: "Changes discarded." }));
+    await run(discardRevision({ courseId: course.id, revisionId: course.revision.id }), { successMessage: "Changes discarded." });
   };
 
   return (
@@ -267,9 +302,21 @@ export default function CourseManagePage({ onMenuClick }) {
       />
 
       <div className="mx-auto w-full max-w-3xl space-y-5 p-4 sm:p-6 lg:p-8">
-        <button onClick={() => navigate(backTo)} className="flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-stone-700">
-          <ArrowLeft size={14} /> {backLabel}
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button onClick={() => navigate(backTo)} className="flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-stone-700">
+            <ArrowLeft size={14} /> {backLabel}
+          </button>
+          {/* Trainers can change details only before the course is
+              submitted (or after a denial); admins any time. */}
+          {(isAdmin || course.status === "draft" || course.status === "denied") && (
+            <button
+              onClick={() => setEditingDetails(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-50"
+            >
+              <Settings2 size={13} /> Edit details
+            </button>
+          )}
+        </div>
 
         {!isAdmin && course.status === "pending" && (
           <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800 sm:flex-row sm:items-center">
@@ -277,7 +324,7 @@ export default function CourseManagePage({ onMenuClick }) {
               <Clock size={14} className="shrink-0" /> Awaiting admin approval — learners won't see this course in the catalog until it's
               approved. You can keep editing it in the meantime.
             </span>
-            <DeleteCourseButton onDelete={deleteCourse} />
+            {allowDelete && <DeleteCourseButton onDelete={deleteCourse} />}
           </div>
         )}
         {!isAdmin && (course.status === "draft" || course.status === "denied") && (
@@ -285,10 +332,13 @@ export default function CourseManagePage({ onMenuClick }) {
             course={course}
             onSaveDraft={saveDraft}
             onSubmit={submitForApproval}
-            onDelete={deleteCourse}
+            onDelete={allowDelete ? deleteCourse : null}
+            busy={busy}
           />
         )}
-        {!isAdmin && isLive && <LiveUpdatePanel course={course} onSubmit={submitUpdate} onDiscard={discardUpdate} />}
+        {!isAdmin && isLive && (
+          <LiveUpdatePanel course={course} onStart={startUpdate} onSubmit={submitUpdate} onDiscard={discardUpdate} busy={busy} />
+        )}
 
         {isAdmin && (
           <div className="rounded-xl border border-stone-200 bg-white px-4 py-3 text-xs text-stone-500">
@@ -313,8 +363,19 @@ export default function CourseManagePage({ onMenuClick }) {
             ))}
           </div>
         )}
-        <CourseTopicsManager course={course} readOnly={isAdmin} useRevision={isAdmin ? viewingProposed : isLive} />
+        {isAdmin && allowDelete && (
+          <div className="flex justify-end">
+            <DeleteCourseButton onDelete={deleteCourse} />
+          </div>
+        )}
+        {/* A live course's content is only editable (and, for its trainer,
+            only readable) through an open update. */}
+        {!(!isAdmin && isLive && !course.revision) && (
+          <CourseTopicsManager course={course} readOnly={isAdmin} useRevision={isAdmin ? viewingProposed : isLive} />
+        )}
       </div>
+
+      {editingDetails && <CourseFormModal editing={course} onClose={() => setEditingDetails(false)} />}
     </div>
   );
 }

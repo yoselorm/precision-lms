@@ -1,138 +1,156 @@
-import { createSlice, nanoid } from "@reduxjs/toolkit";
-import { mockClasses } from "../../data/mockData";
-import { removeCourse } from "./coursesSlice";
+import { createSlice } from "@reduxjs/toolkit";
+import * as api from "../../api/learning";
+import { ApiError } from "../../api/client";
+import { normalizeClass, normalizeQuiz, quizToApi } from "../../api/normalize";
+import { apiThunk, guardOf } from "../apiThunk";
+import { upsertCourses } from "./coursesSlice";
+import { logout } from "./authSlice";
 
-const initialState = {
-  classes: mockClasses,
-  // One row per (class, user) quiz submission — kept separate from
-  // enrollments because class membership doesn't imply a course enrollment
-  // record exists, and a class quiz is a distinct assessment from the
-  // course's own quiz.
+export const initialState = {
+  classes: [],
+  status: "idle",
+  // Classes each user has joined, by user id. The API doesn't expose class
+  // rosters or a "classes I've joined" list, so this is remembered locally
+  // (and persisted) from join responses until the backend can answer it.
+  joinedIds: {},
+  // Class quiz results seen this session — the API has no attempt history.
   classQuizAttempts: [],
 };
+
+export const fetchClasses = apiThunk("classes/fetch", (_, { getState }) => api.listClasses(guardOf(getState)));
+
+// Detail includes the class's courses (the list doesn't), and for members
+// its quiz. Embedded courses are merged into the courses list.
+export const fetchClass = apiThunk("classes/fetchOne", async (classId, { getState, dispatch }) => {
+  const guard = guardOf(getState);
+  const cls = await api.getClass(guard, classId);
+  if (cls.courses?.length) dispatch(upsertCourses(cls.courses));
+  let quiz = null;
+  if (guard !== "admin") {
+    try {
+      quiz = await api.getClassQuiz(classId);
+    } catch (err) {
+      // 404: no quiz. 403: not a member/owner. Neither is an error here.
+      if (!(err instanceof ApiError && (err.status === 404 || err.status === 403))) throw err;
+    }
+  }
+  return { cls, quiz };
+});
+
+export const createClass = apiThunk("classes/create", ({ title, description, startDate, endDate }) =>
+  api.createClass({ title, description: description?.trim() || null, start_date: startDate, end_date: endDate })
+);
+
+// Owning trainer edits a class's details or moves it between
+// upcoming/active/completed.
+export const updateClass = apiThunk("classes/update", ({ classId, title, description, startDate, endDate, status }) =>
+  api.updateClass(classId, { title, description: description?.trim() || null, start_date: startDate, end_date: endDate, status })
+);
+
+export const joinClass = apiThunk("classes/join", async ({ classId }, { getState }) => ({
+  cls: await api.joinClass(classId),
+  userId: getState().auth.currentUser?.id,
+}));
+
+// Course attach/detach/mandatory changes, then reload the class detail.
+const classEdit = (type, fn) =>
+  apiThunk(type, async (arg, { dispatch }) => {
+    await fn(arg);
+    await dispatch(fetchClass(arg.classId));
+    return arg;
+  });
+
+export const addCourseToClass = classEdit("classes/addCourse", ({ classId, courseId, mandatory }) =>
+  api.attachClassCourse(classId, courseId, mandatory)
+);
+export const removeCourseFromClass = classEdit("classes/removeCourse", ({ classId, courseId }) =>
+  api.detachClassCourse(classId, courseId)
+);
+export const setCourseMandatory = classEdit("classes/setMandatory", ({ classId, courseId, mandatory }) =>
+  api.setClassCourseMandatory(classId, courseId, mandatory)
+);
+export const setClassQuiz = classEdit("classes/setQuiz", ({ classId, ...quiz }) => api.saveClassQuiz(classId, quizToApi(quiz)));
+export const removeClassQuiz = classEdit("classes/removeQuiz", ({ classId }) => api.deleteClassQuiz(classId));
+
+function applyMembership(state, cls) {
+  const isMember = Object.values(state.joinedIds).some((ids) => ids.includes(cls.id));
+  if (!isMember) return cls;
+  const memberIds = Object.entries(state.joinedIds)
+    .filter(([, ids]) => ids.includes(cls.id))
+    .map(([userId]) => userId);
+  return { ...cls, memberIds };
+}
+
+function upsert(state, apiClass, extra = {}) {
+  const incoming = applyMembership(state, { ...normalizeClass(apiClass), ...extra });
+  const index = state.classes.findIndex((c) => c.id === incoming.id);
+  if (index === -1) {
+    state.classes.push(incoming);
+    return;
+  }
+  const existing = state.classes[index];
+  state.classes[index] = {
+    ...incoming,
+    // The list response omits courses/quiz — keep what the detail fetch had.
+    courses: incoming.courses ?? existing.courses,
+    quiz: "quiz" in extra ? extra.quiz : existing.quiz,
+  };
+}
 
 const classesSlice = createSlice({
   name: "classes",
   initialState,
   reducers: {
-    addClass: {
-      reducer(state, action) {
-        state.classes.push(action.payload);
-      },
-      prepare({ title, description, courses, trainerId, startDate, endDate }) {
-        return {
-          payload: {
-            id: `cls-${nanoid(6)}`,
-            title,
-            description: description?.trim() || "",
-            courses: courses || [],
-            trainerId,
-            // Rosters are built by students enrolling themselves, not set by
-            // whoever creates the class.
-            memberIds: [],
-            startDate,
-            endDate,
-            status: new Date(startDate) > new Date() ? "upcoming" : "active",
-          },
-        };
-      },
-    },
-    // Attach another course to an existing class (in addition to whatever's
-    // already there) — used from Manage materials' "Add a course" action.
-    addCourseToClass: {
-      reducer(state, action) {
-        const { classId, course } = action.payload;
-        const cls = state.classes.find((c) => c.id === classId);
-        if (!cls) return;
-        if (!cls.courses) cls.courses = [];
-        if (cls.courses.some((c) => c.courseId === course.courseId)) return;
-        cls.courses.push(course);
-      },
-      prepare({ classId, courseId, mandatory }) {
-        return { payload: { classId, course: { courseId, mandatory: !!mandatory } } };
-      },
-    },
-    removeCourseFromClass(state, action) {
-      const { classId, courseId } = action.payload;
-      const cls = state.classes.find((c) => c.id === classId);
-      if (!cls) return;
-      cls.courses = (cls.courses || []).filter((c) => c.courseId !== courseId);
-    },
-    setCourseMandatory(state, action) {
-      const { classId, courseId, mandatory } = action.payload;
-      const cls = state.classes.find((c) => c.id === classId);
-      const entry = cls?.courses?.find((c) => c.courseId === courseId);
-      if (entry) entry.mandatory = !!mandatory;
-    },
-    // A student joining a class themselves — course-level enrollment records
-    // for the class's attached courses are created separately by the caller
-    // (dispatching enrollmentsSlice's enrollUser for each one), same way
-    // ClassMaterialsPage already dispatches more than one action for a
-    // single user-facing step.
-    enrollInClass(state, action) {
-      const { classId, userId } = action.payload;
-      const cls = state.classes.find((c) => c.id === classId);
-      if (!cls) return;
-      if (!cls.memberIds.includes(userId)) cls.memberIds.push(userId);
-    },
-    // Trainer/admin authors or edits a class's own quiz (from the Quizzes
-    // page) — separate from whatever quiz lives on the attached course, and
-    // only seen by students in this specific class.
-    setClassQuiz(state, action) {
-      const { classId, title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions } = action.payload;
-      const cls = state.classes.find((c) => c.id === classId);
-      if (!cls) return;
-      cls.quiz = {
-        title: title?.trim() || "",
-        passingScore: Number(passingScore) || 70,
-        timeLimitMins: Number(timeLimitMins) || null,
-        maxAttempts: Number(maxAttempts) || null,
-        showAnswers: showAnswers !== false,
-        questions: questions || [],
-      };
-    },
-    removeClassQuiz(state, action) {
-      const cls = state.classes.find((c) => c.id === action.payload.classId);
-      if (cls) cls.quiz = null;
-    },
     submitClassQuizAttempt(state, action) {
-      const { classId, userId, score, passingScore } = action.payload;
+      const { classId, userId, score, passingScore, passed } = action.payload;
       state.classQuizAttempts.push({
-        id: `cqa-${nanoid(6)}`,
+        id: `cqa-${Date.now()}`,
         classId,
         userId,
         score,
-        passed: score >= (passingScore ?? 0),
+        passed: passed ?? score >= (passingScore ?? 0),
         submittedAt: new Date().toISOString(),
       });
     },
   },
   extraReducers: (builder) => {
-    builder.addCase(removeCourse, (state, action) => {
-      state.classes.forEach((cls) => {
-        cls.courses = (cls.courses || []).filter((c) => c.courseId !== action.payload.courseId);
-      });
-    });
+    builder
+      .addCase(fetchClasses.pending, (state) => {
+        state.status = "loading";
+      })
+      .addCase(fetchClasses.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        const ids = new Set(action.payload.map((c) => c.id));
+        state.classes = state.classes.filter((c) => ids.has(c.id));
+        action.payload.forEach((c) => upsert(state, c));
+      })
+      .addCase(fetchClasses.rejected, (state) => {
+        state.status = "failed";
+      })
+      .addCase(fetchClass.fulfilled, (state, action) => {
+        upsert(state, action.payload.cls, { quiz: normalizeQuiz(action.payload.quiz) });
+      })
+      .addCase(createClass.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(updateClass.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(joinClass.fulfilled, (state, action) => {
+        const { cls, userId } = action.payload;
+        const ids = state.joinedIds[userId] || [];
+        if (!ids.includes(cls.id)) state.joinedIds[userId] = [...ids, cls.id];
+        upsert(state, cls);
+      })
+      // Keep joinedIds across logins — it's per user and can't be refetched.
+      .addCase(logout, (state) => ({ ...initialState, joinedIds: state.joinedIds }));
   },
 });
 
-export const {
-  addClass,
-  addCourseToClass,
-  removeCourseFromClass,
-  setCourseMandatory,
-  enrollInClass,
-  setClassQuiz,
-  removeClassQuiz,
-  submitClassQuizAttempt,
-} = classesSlice.actions;
+export const { submitClassQuizAttempt } = classesSlice.actions;
 export default classesSlice.reducer;
 
 export const selectAllClasses = (state) => state.classes.classes;
+export const selectClassesStatus = (state) => state.classes.status;
 export const selectClassById = (state, classId) => state.classes.classes.find((c) => c.id === classId);
 export const selectClassesForUser = (state, userId) =>
-  state.classes.classes.filter((c) => c.memberIds.includes(userId));
-export const selectClassesByTrainer = (state, trainerId) =>
-  state.classes.classes.filter((c) => c.trainerId === trainerId);
+  state.classes.classes.filter((c) => (state.classes.joinedIds[userId] || []).includes(c.id));
+export const selectClassesByTrainer = (state, trainerId) => state.classes.classes.filter((c) => c.trainerId === trainerId);
 export const selectClassQuizAttempts = (state, classId, userId) =>
   state.classes.classQuizAttempts.filter((a) => a.classId === classId && a.userId === userId);

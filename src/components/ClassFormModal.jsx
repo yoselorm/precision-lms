@@ -1,17 +1,15 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { X, BookOpen } from "lucide-react";
-import { addClass } from "../store/slices/classesSlice";
+import { createClass, addCourseToClass } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "./ModalOverlay";
 
-// Sets up a new class — used both from Admin > Classes (any trainer) and
-// from the general Classes page (a trainer creating one of their own).
-// A trainer creating their own class is locked in as its trainer; an admin
-// gets the full trainer picker, same as before.
+// Sets up a new class from the Classes page. Only trainers can create
+// classes in the API, and they're always its trainer.
 export default function ClassFormModal({ onClose }) {
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
@@ -19,7 +17,7 @@ export default function ClassFormModal({ onClose }) {
   // this user is the one who authored them — otherwise attaching someone
   // else's unreviewed course to a class would be a backdoor around review.
   const allCourses = useSelector(selectAllCourses);
-  const courses = allCourses.filter((c) => (c.status || "approved") === "approved" || c.createdBy === currentUser.id);
+  const courses = allCourses.filter((c) => c.status === "approved" || c.createdBy === currentUser.id);
   const trainers = useSelector(selectApprovedTrainers);
   const isTrainer = currentUser.role === "trainer";
 
@@ -31,6 +29,8 @@ export default function ClassFormModal({ onClose }) {
     startDate: "",
     endDate: "",
   });
+
+  const [saving, setSaving] = useState(false);
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -51,11 +51,36 @@ export default function ClassFormModal({ onClose }) {
     }));
   };
 
-  const handleSubmit = (e) => {
+  // Create the class, then attach each chosen course (the API takes them
+  // one at a time).
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title.trim() || form.courses.length === 0 || !form.trainerId || !form.startDate || !form.endDate) return;
-    dispatch(addClass(form));
-    dispatch(pushToast({ type: "success", message: `"${form.title}" class was created.` }));
+    if (!form.title.trim() || form.courses.length === 0 || !form.startDate || !form.endDate) return;
+    if (form.endDate < form.startDate) {
+      dispatch(pushToast({ type: "error", message: "The end date must be on or after the start date." }));
+      return;
+    }
+    setSaving(true);
+    const created = await dispatch(createClass({ ...form, title: form.title.trim() }));
+    if (created.error) {
+      setSaving(false);
+      dispatch(pushToast({ type: "error", message: created.payload || "Couldn't create the class." }));
+      return;
+    }
+    const classId = created.payload.id;
+    const failed = [];
+    for (const entry of form.courses) {
+      const attached = await dispatch(addCourseToClass({ classId, courseId: entry.courseId, mandatory: entry.mandatory }));
+      if (attached.error) failed.push(entry.courseId);
+    }
+    setSaving(false);
+    dispatch(
+      pushToast(
+        failed.length
+          ? { type: "error", message: `"${form.title}" was created, but ${failed.length} course(s) couldn't be attached — add them from the class page.` }
+          : { type: "success", message: `"${form.title}" class was created.` }
+      )
+    );
     onClose();
   };
 
@@ -188,8 +213,8 @@ export default function ClassFormModal({ onClose }) {
           <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50">
             Cancel
           </button>
-          <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
-            Create class
+          <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+            {saving ? "Creating..." : "Create class"}
           </button>
         </div>
       </form>

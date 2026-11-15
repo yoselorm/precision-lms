@@ -1,12 +1,14 @@
-import React, { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Award, Plus, X, Eye, Pencil, Trash2, Users, Palette } from "lucide-react";
 import Header from "../components/Header";
 import CertificateView from "../components/CertificateView";
-import { selectAllCourses, setCourseCertificate } from "../store/slices/coursesSlice";
+import { selectAllCourses } from "../store/slices/coursesSlice";
+import { selectAllCertificates, attachCertificates, saveCourseCertificate, deleteCourseCertificate } from "../store/slices/certificatesSlice";
+import { defaultTemplate } from "../utils/certificateTemplate";
+import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
-import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
 
@@ -15,7 +17,7 @@ const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm 
 // Create a new certificate (pick any course that doesn't have one yet) or
 // edit an existing one, in which case the linked course is fixed.
 function CertificateFormModal({ courses, editing, onClose }) {
-  const dispatch = useDispatch();
+  const [run, saving] = useApiAction();
   const navigate = useNavigate();
   const available = courses.filter((c) => !c.certificate);
   const [form, setForm] = useState(() =>
@@ -39,18 +41,18 @@ function CertificateFormModal({ courses, editing, onClose }) {
     setForm((prev) => ({ ...prev, courseId, title: course ? `Certificate of Completion — ${course.title}` : prev.title }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.courseId || !form.title.trim()) return;
-    const { courseId, ...certificate } = form;
-    dispatch(setCourseCertificate({ courseId, certificate }));
+    const { courseId, ...fields } = form;
+    // A new certificate starts from the default layout (the API requires a
+    // template); edits keep the existing design.
+    const certificate = editing ? fields : { ...fields, template: defaultTemplate(fields) };
     const course = courses.find((c) => c.id === courseId);
-    dispatch(
-      pushToast({
-        type: "success",
-        message: editing ? "Certificate updated." : `Certificate created and linked to "${course?.title}".`,
-      })
-    );
+    const ok = await run(saveCourseCertificate({ courseId, certificate }), {
+      successMessage: editing ? "Certificate updated." : `Certificate created and linked to "${course?.title}".`,
+    });
+    if (!ok) return;
     onClose();
     if (!editing) navigate(`/admin/certificates/${courseId}/design`);
   };
@@ -107,7 +109,7 @@ function CertificateFormModal({ courses, editing, onClose }) {
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-100">
             Cancel
           </button>
-          <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+          <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
             {editing ? "Save changes" : "Create certificate"}
           </button>
         </div>
@@ -117,10 +119,12 @@ function CertificateFormModal({ courses, editing, onClose }) {
 }
 
 export default function AdminCertificates({ onMenuClick }) {
-  const dispatch = useDispatch();
+  const [run] = useApiAction();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const courses = useSelector(selectAllCourses);
+  const allCourses = useSelector(selectAllCourses);
+  const certificates = useSelector(selectAllCertificates);
+  const courses = useMemo(() => attachCertificates(allCourses, certificates), [allCourses, certificates]);
   const enrollments = useSelector(selectAllEnrollments);
   const [formState, setFormState] = useState(null); // { editing: course | null }
   const [previewing, setPreviewing] = useState(null);
@@ -136,8 +140,7 @@ export default function AdminCertificates({ onMenuClick }) {
       tone: "danger",
     });
     if (!ok) return;
-    dispatch(setCourseCertificate({ courseId: course.id, certificate: null }));
-    dispatch(pushToast({ type: "success", message: "Certificate removed." }));
+    await run(deleteCourseCertificate({ courseId: course.id }), { successMessage: "Certificate removed." });
   };
 
   return (

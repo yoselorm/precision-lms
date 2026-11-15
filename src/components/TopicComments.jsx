@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { MessageSquare, Trash2, Send } from "lucide-react";
+import { MessageSquare, Trash2, Send, Loader2 } from "lucide-react";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectAllUsers } from "../store/slices/usersSlice";
-import { addComment, removeComment, selectCommentsForTopic } from "../store/slices/commentsSlice";
+import { fetchComments, addComment, removeComment, selectCommentsForTopic } from "../store/slices/commentsSlice";
+import { useApiAction } from "../hooks/useApiAction";
 
 function formatWhen(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -12,19 +12,22 @@ function formatWhen(iso) {
 // A lightweight discussion thread under a course topic — learners and
 // trainers/admins previewing the course can leave notes or questions
 // specific to that topic, visible to everyone taking the course, shared
-// across all lessons within it.
+// across all lessons within it. Posting only works on a published course.
 export default function TopicComments({ courseId, topicId }) {
   const dispatch = useDispatch();
+  const [run, busy] = useApiAction();
   const currentUser = useSelector(selectCurrentUser);
-  const users = useSelector(selectAllUsers);
   const comments = useSelector((state) => selectCommentsForTopic(state, courseId, topicId));
   const [text, setText] = useState("");
 
-  const handlePost = (e) => {
+  useEffect(() => {
+    dispatch(fetchComments({ topicId }));
+  }, [dispatch, topicId]);
+
+  const handlePost = async (e) => {
     e.preventDefault();
     if (!text.trim()) return;
-    dispatch(addComment({ courseId, topicId, userId: currentUser.id, text: text.trim() }));
-    setText("");
+    if (await run(addComment({ topicId, text: text.trim() }))) setText("");
   };
 
   return (
@@ -36,7 +39,8 @@ export default function TopicComments({ courseId, topicId }) {
       {comments.length > 0 ? (
         <div className="mb-4 space-y-3.5">
           {comments.map((c) => {
-            const author = users.find((u) => u.id === c.userId);
+            // Comments carry their author's name and avatar.
+            const author = c.user;
             const isOwn = c.userId === currentUser.id;
             return (
               <div key={c.id} className="flex items-start gap-2.5">
@@ -53,7 +57,8 @@ export default function TopicComments({ courseId, topicId }) {
                     <span className="shrink-0 text-[10px] text-stone-400">{formatWhen(c.createdAt)}</span>
                     {isOwn && (
                       <button
-                        onClick={() => dispatch(removeComment(c.id))}
+                        onClick={() => run(removeComment(c.id))}
+                        disabled={busy}
                         title="Delete your comment"
                         className="ml-auto shrink-0 text-stone-300 transition hover:text-rose-600"
                       >
@@ -89,10 +94,10 @@ export default function TopicComments({ courseId, topicId }) {
           />
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={busy || !text.trim()}
             className="mt-1.5 flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Send size={12} /> Post comment
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Post comment
           </button>
         </div>
       </form>

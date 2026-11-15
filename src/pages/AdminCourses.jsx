@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Plus, Layers, Eye, Check, Ban, Clock, X, UserPlus, GraduationCap } from "lucide-react";
 import Header from "../components/Header";
 import CourseFormModal from "../components/CourseFormModal";
-import { selectAllCourses, setCourseStatus, reviewCourseUpdate, setCourseOwner } from "../store/slices/coursesSlice";
+import { selectAllCourses, selectCoursesStatus, reviewCourse, reviewRevision, setCourseOwner } from "../store/slices/coursesSlice";
+import { selectAllCertificates } from "../store/slices/certificatesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { selectAllUsers, selectApprovedTrainers } from "../store/slices/usersSlice";
 import { useConfirm } from "../components/ConfirmDialog";
-import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "../components/ModalOverlay";
 
 const STATUS_PILL = {
@@ -73,17 +74,18 @@ function DenyCourseModal({ course, isUpdate = false, onDeny, onClose }) {
 // Picks the trainer who will build a course (for courses created without
 // one, or to hand a course to someone else).
 function AssignTrainerModal({ course, onClose }) {
-  const dispatch = useDispatch();
   const trainers = useSelector(selectApprovedTrainers);
+  const [run, saving] = useApiAction();
   const [trainerId, setTrainerId] = useState(course.createdBy || trainers[0]?.id || "");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!trainerId) return;
     const trainer = trainers.find((t) => t.id === trainerId);
-    dispatch(setCourseOwner({ courseId: course.id, trainerId }));
-    dispatch(pushToast({ type: "success", message: `"${course.title}" is now assigned to ${trainer?.name}.` }));
-    onClose();
+    const ok = await run(setCourseOwner({ courseId: course.id, trainerId }), {
+      successMessage: `"${course.title}" is now assigned to ${trainer?.name}.`,
+    });
+    if (ok) onClose();
   };
 
   return (
@@ -122,10 +124,10 @@ function AssignTrainerModal({ course, onClose }) {
           </button>
           <button
             type="submit"
-            disabled={!trainerId}
+            disabled={saving || !trainerId}
             className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Assign trainer
+            {saving ? "Assigning..." : "Assign trainer"}
           </button>
         </div>
       </form>
@@ -134,9 +136,11 @@ function AssignTrainerModal({ course, onClose }) {
 }
 
 export default function AdminCourses({ onMenuClick }) {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
+  const [run, busy] = useApiAction();
   const courses = useSelector(selectAllCourses);
+  const coursesStatus = useSelector(selectCoursesStatus);
+  const certificates = useSelector(selectAllCertificates);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
   const [denying, setDenying] = useState(null);
@@ -148,15 +152,10 @@ export default function AdminCourses({ onMenuClick }) {
   const pendingCount = courses.filter(awaitingReview).length;
   const filtered = useMemo(() => (filter === "pending" ? courses.filter(awaitingReview) : courses), [courses, filter]);
 
-  const handleUpdateReview = (course, approve, reason) => {
-    dispatch(reviewCourseUpdate({ courseId: course.id, approve, reason }));
-    dispatch(
-      pushToast({
-        type: approve ? "success" : "info",
-        message: approve ? `The update to "${course.title}" is now live.` : `The update to "${course.title}" was denied.`,
-      })
-    );
-  };
+  const handleUpdateReview = (course, approve, reason) =>
+    run(reviewRevision({ courseId: course.id, revisionId: course.revision?.id, approve, reason }), {
+      successMessage: approve ? `The update to "${course.title}" is now live.` : `The update to "${course.title}" was denied.`,
+    });
 
   const approveCourse = async (course) => {
     const wasDenied = course.status === "denied";
@@ -179,19 +178,14 @@ export default function AdminCourses({ onMenuClick }) {
     if (ok) handleUpdateReview(course, true);
   };
 
-  const handleStatusChange = (course, status, reason) => {
-    dispatch(setCourseStatus({ courseId: course.id, status, reason }));
-    dispatch(
-      pushToast({
-        type: status === "approved" ? "success" : "info",
-        message: `"${course.title}" was ${status === "approved" ? "approved and is now public" : "denied"}.`,
-      })
-    );
-  };
+  const handleStatusChange = (course, status, reason) =>
+    run(reviewCourse({ courseId: course.id, status, reason }), {
+      successMessage: `"${course.title}" was ${status === "approved" ? "approved and is now public" : "denied"}.`,
+    });
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title="Courses" subtitle={`${courses.length} courses published`} onMenuClick={onMenuClick} />
+      <Header title="Courses" subtitle={coursesStatus === "loading" && courses.length === 0 ? "Loading courses..." : `${courses.length} course${courses.length === 1 ? "" : "s"}`} onMenuClick={onMenuClick} />
 
       <div className="space-y-4 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -238,8 +232,9 @@ export default function AdminCourses({ onMenuClick }) {
             </thead>
             <tbody className="divide-y divide-stone-100">
               {filtered.map((c) => {
-                const quizCount = c.topics.filter((t) => t.quiz?.questions?.length).length;
-                const status = c.status || "approved";
+                const loaded = c.contentStatus === "succeeded";
+                const status = c.status;
+                const hasCertificate = certificates.some((cert) => cert.courseId === c.id);
                 const owner = users.find((u) => u.id === c.createdBy);
                 return (
                   <tr key={c.id}>
@@ -282,17 +277,18 @@ export default function AdminCourses({ onMenuClick }) {
                         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Free</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-stone-500">{c.certificate ? "Yes" : "—"}</td>
-                    <td className="px-4 py-3 text-stone-500">{c.topics.length}</td>
-                    <td className="px-4 py-3 text-stone-500">{quizCount || "—"}</td>
-                    <td className="px-4 py-3 text-stone-500">{c.studentsCount}</td>
+                    <td className="px-4 py-3 text-stone-500">{hasCertificate ? "Yes" : "—"}</td>
+                    <td className="px-4 py-3 text-stone-500">{loaded ? c.topics.length : "—"}</td>
+                    <td className="px-4 py-3 text-stone-500">—</td>
+                    <td className="px-4 py-3 text-stone-500">{c.studentsCount || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1.5 whitespace-nowrap">
                         {status === "pending" && (
                           <>
                             <button
                               onClick={() => approveCourse(c)}
-                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
+                              disabled={busy}
+                              className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                             >
                               <Check size={11} /> Approve
                             </button>
@@ -349,7 +345,11 @@ export default function AdminCourses({ onMenuClick }) {
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && <p className="p-4 text-center text-xs text-stone-400">No courses match this filter.</p>}
+          {filtered.length === 0 && (
+            <p className="p-4 text-center text-xs text-stone-400">
+              {coursesStatus === "loading" ? "Loading courses..." : courses.length === 0 ? "No courses yet — add the first one above." : "No courses match this filter."}
+            </p>
+          )}
         </div>
       </div>
 
@@ -362,10 +362,11 @@ export default function AdminCourses({ onMenuClick }) {
           course={denying.course}
           isUpdate={denying.isUpdate}
           onClose={() => setDenying(null)}
-          onDeny={(reason) => {
-            if (denying.isUpdate) handleUpdateReview(denying.course, false, reason);
-            else handleStatusChange(denying.course, "denied", reason);
-            setDenying(null);
+          onDeny={async (reason) => {
+            const ok = denying.isUpdate
+              ? await handleUpdateReview(denying.course, false, reason)
+              : await handleStatusChange(denying.course, "denied", reason);
+            if (ok) setDenying(null);
           }}
         />
       )}

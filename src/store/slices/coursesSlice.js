@@ -1,301 +1,256 @@
-import { createSlice, current, nanoid } from "@reduxjs/toolkit";
-import { renameCategory } from "./categoriesSlice";
-import { mockCourses } from "../../data/mockData";
-
-// When a trainer edits a course that's already live, their changes go into a
-// separate `revision` copy of the topics instead. Learners keep the approved
-// version until an admin approves the update. Editing actions pass
-// `revision: true` to target that copy (creating it on the first edit).
-function topicsToEdit(course, useRevision) {
-  if (!useRevision) return course.topics;
-  if (!course.revision) {
-    course.revision = { topics: JSON.parse(JSON.stringify(current(course.topics))), status: "editing", review: null };
-  }
-  return course.revision.topics;
-}
-
-const lessonMinutes = (topics) => topics.reduce((sum, t) => sum + t.lessons.reduce((s, l) => s + (l.durationMins || 0), 0), 0);
+import { createSlice } from "@reduxjs/toolkit";
+import * as coursesApi from "../../api/courses";
+import { ApiError } from "../../api/client";
+import { normalizeCourse, normalizeTopic, normalizeQuiz, normalizeRevision, withTopics, courseToApi, lessonToApi, quizToApi } from "../../api/normalize";
+import { apiThunk, guardOf, roleOf } from "../apiThunk";
+import { updateCategory } from "./categoriesSlice";
+import { logout } from "./authSlice";
 
 const initialState = {
-  courses: mockCourses,
+  courses: [],
+  // "idle" | "loading" | "succeeded" | "failed" — for the course list fetch.
+  status: "idle",
 };
+
+// Admins see every course. Trainers see the approved catalog plus their own
+// courses in any status; learners just the catalog.
+export const fetchCourses = apiThunk("courses/fetch", async (_, { getState }) => {
+  const guard = guardOf(getState);
+  if (guard === "admin") return coursesApi.listCourses("admin");
+  const catalog = await coursesApi.listCourses("user");
+  if (roleOf(getState) !== "trainer") return catalog;
+  const mine = await coursesApi.listCourses("user", { mine: true });
+  const byId = new Map([...catalog, ...mine].map((c) => [c.id, c]));
+  return [...byId.values()];
+});
+
+// Topic quizzes only have a user-side read (without correct answers);
+// a 404 just means the topic has no quiz.
+async function loadQuizzes(topics) {
+  return Promise.all(
+    topics.map(async (topic) => {
+      try {
+        return { ...topic, quiz: normalizeQuiz(await coursesApi.getTopicQuiz(topic.id)) };
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return topic;
+        throw err;
+      }
+    })
+  );
+}
+
+// Loads what the current user may see of a course's topics/lessons:
+// - admin: the live topics (quizzes can't be read on the admin side)
+// - owning trainer: the course itself while draft/denied, or the open
+//   revision of a live course (live topics aren't readable to them)
+// - anyone else: nothing — the API has no learner-facing content route yet.
+export const fetchCourseContent = apiThunk("courses/fetchContent", async (courseId, { getState }) => {
+  const guard = guardOf(getState);
+  const user = getState().auth.currentUser;
+  const course = getState().courses.courses.find((c) => c.id === courseId);
+
+  if (guard === "admin") {
+    const topics = (await coursesApi.listTopics("admin", courseId)).map(normalizeTopic);
+    return { courseId, topics, revision: null };
+  }
+  if (!course || course.createdBy !== user?.id) {
+    return { courseId, unavailable: "Course content isn't available to learners from the server yet." };
+  }
+  if (course.status === "pending") {
+    return { courseId, unavailable: "Course content can't be viewed while it's awaiting approval." };
+  }
+  if (course.status === "approved") {
+    let revision = null;
+    try {
+      revision = await coursesApi.getCurrentRevision(courseId);
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) throw err;
+    }
+    if (!revision) return { courseId, topics: [], revision: null };
+    const normalized = normalizeRevision(revision);
+    return { courseId, topics: [], revision: { ...normalized, topics: await loadQuizzes(normalized.topics) } };
+  }
+  const topics = (await coursesApi.listTopics("user", courseId)).map(normalizeTopic);
+  return { courseId, topics: await loadQuizzes(topics), revision: null };
+});
+
+export const createCourse = apiThunk("courses/create", (form, { getState }) => {
+  const guard = guardOf(getState);
+  const body = courseToApi({ ...form, createdBy: guard === "admin" ? form.createdBy : undefined });
+  return coursesApi.createCourse(guard, body);
+});
+
+// Course details (not content). Trainers can only edit while draft/denied;
+// admins any time.
+export const updateCourse = apiThunk("courses/update", ({ courseId, ...form }, { getState }) =>
+  coursesApi.updateCourse(guardOf(getState), courseId, courseToApi(form))
+);
+
+export const deleteCourse = apiThunk("courses/delete", async ({ courseId }) => {
+  await coursesApi.deleteCourse(courseId);
+  return { courseId };
+});
+
+// Admin approves or denies a submitted course.
+export const reviewCourse = apiThunk("courses/review", ({ courseId, status, reason }) =>
+  coursesApi.reviewCourse(courseId, status, reason)
+);
+
+export const submitCourse = apiThunk("courses/submit", ({ courseId }) => coursesApi.submitCourse(courseId));
+
+export const setCourseOwner = apiThunk("courses/setOwner", ({ courseId, trainerId }) =>
+  coursesApi.setCourseOwner(courseId, trainerId)
+);
+
+// Content edits go to whichever container the server considers editable, so
+// after each one we just reload the course's content.
+const contentEdit = (type, fn) =>
+  apiThunk(type, async (arg, { getState, dispatch }) => {
+    await fn(arg, guardOf(getState));
+    await dispatch(fetchCourseContent(arg.courseId));
+    return { courseId: arg.courseId };
+  });
+
+export const addTopic = contentEdit("courses/addTopic", ({ courseId, title, description }, guard) =>
+  coursesApi.createTopic(guard, courseId, { title, description: description?.trim() || null })
+);
+
+export const removeTopic = contentEdit("courses/removeTopic", ({ topicId }, guard) => coursesApi.deleteTopic(guard, topicId));
+
+export const addLesson = contentEdit("courses/addLesson", ({ topicId, ...lesson }, guard) =>
+  coursesApi.createLesson(guard, topicId, lessonToApi(lesson))
+);
+
+export const removeLesson = contentEdit("courses/removeLesson", ({ lessonId }, guard) => coursesApi.deleteLesson(guard, lessonId));
+
+export const saveTopicQuiz = contentEdit("courses/saveTopicQuiz", ({ topicId, quiz }, guard) =>
+  coursesApi.saveTopicQuiz(guard, topicId, quizToApi(quiz))
+);
+
+export const removeTopicQuiz = contentEdit("courses/removeTopicQuiz", ({ topicId }, guard) =>
+  coursesApi.deleteTopicQuiz(guard, topicId)
+);
+
+// ── Trainer updates to a live course ──
+export const startRevision = contentEdit("courses/startRevision", ({ courseId }) => coursesApi.startRevision(courseId));
+
+export const submitRevision = contentEdit("courses/submitRevision", ({ courseId, revisionId }) =>
+  coursesApi.submitRevision(courseId, revisionId)
+);
+
+export const discardRevision = contentEdit("courses/discardRevision", ({ courseId, revisionId }) =>
+  coursesApi.discardRevision(courseId, revisionId)
+);
+
+// Admin side: needs the revision's id, which the admin API doesn't expose
+// yet — only works when one is already known on the course.
+export const reviewRevision = contentEdit("courses/reviewRevision", ({ courseId, revisionId, approve, reason }) => {
+  if (!revisionId) throw new Error("The server doesn't list pending course updates for admins yet.");
+  return coursesApi.reviewRevision(courseId, revisionId, approve ? "approved" : "denied", reason);
+});
+
+function upsert(state, apiCourse) {
+  const incoming = normalizeCourse(apiCourse);
+  const index = state.courses.findIndex((c) => c.id === incoming.id);
+  if (index === -1) {
+    state.courses.push(incoming);
+    return;
+  }
+  // Keep already-loaded content when only the course record changed.
+  const existing = state.courses[index];
+  state.courses[index] = {
+    ...incoming,
+    topics: existing.topics,
+    revision: existing.revision,
+    certificate: existing.certificate,
+    contentStatus: existing.contentStatus,
+    contentError: existing.contentError,
+    review: incoming.status === "approved" ? null : existing.review,
+  };
+}
 
 const coursesSlice = createSlice({
   name: "courses",
   initialState,
   reducers: {
-    // Shell-only course creation — used by the admin and trainer "Add
-    // course" forms. Topics/lessons/quizzes are added afterward via the
-    // course-manage page. Admin-authored courses go live immediately;
-    // trainer-authored ones start as a "draft" the trainer keeps building,
-    // then move to "pending" once submitted for admin approval.
-    addCourse: {
-      reducer(state, action) {
-        state.courses.push(action.payload);
-      },
-      // Duration isn't entered — it's the sum of the lessons' durations,
-      // kept up to date as lessons are added. `description` is rich-text HTML.
-      prepare({ title, category, price, description, certificateTitle, thumbnailImage, demoVideoUrl, creatorId, status }) {
-        const id = `c-${nanoid(6)}`;
-        return {
-          payload: {
-            id,
-            title,
-            category,
-            durationMins: 0,
-            demoVideoUrl: demoVideoUrl || "",
-            thumbnailColor: "#0f766e",
-            thumbnailImage: thumbnailImage || `https://picsum.photos/seed/${id}/480/300`,
-            studentsCount: 0,
-            updatedDate: new Date().toISOString().slice(0, 10),
-            price: Number(price) || 0,
-            certificate: certificateTitle ? { title: certificateTitle, issuer: "Learning & Development" } : null,
-            description: description || "",
-            topics: [],
-            createdBy: creatorId || null,
-            status: status || "approved",
-          },
-        };
-      },
-    },
-
-    // Bare-bones course, created inline from the "set up a class" flow when
-    // there's no existing course to attach — materials get added afterward
-    // via the topic/lesson reducers below. Same approval rule as addCourse.
-    createBlankCourse: {
-      reducer(state, action) {
-        state.courses.push(action.payload);
-      },
-      prepare({ title, category, thumbnailImage, creatorId, status }) {
-        const id = `c-${nanoid(6)}`;
-        return {
-          payload: {
-            id,
-            title,
-            category: category || "Technical Skills",
-            durationMins: 0,
-            thumbnailColor: "#0f766e",
-            thumbnailImage: thumbnailImage || `https://picsum.photos/seed/${id}/480/300`,
-            studentsCount: 0,
-            updatedDate: new Date().toISOString().slice(0, 10),
-            price: 0,
-            certificate: null,
-            description: "",
-            topics: [],
-            createdBy: creatorId || null,
-            status: status || "approved",
-          },
-        };
-      },
-    },
-
-    // Admin assigns (or reassigns) the trainer who builds a course — for
-    // courses an admin created without choosing a trainer yet.
-    setCourseOwner(state, action) {
-      const course = state.courses.find((c) => c.id === action.payload.courseId);
-      if (course) course.createdBy = action.payload.trainerId || null;
-    },
-
-    // Trainer deletes their own course before it's published (draft, pending
-    // or denied). Classes and assignments drop their references to it via
-    // their own extraReducers.
-    removeCourse(state, action) {
-      state.courses = state.courses.filter((c) => c.id !== action.payload.courseId);
-    },
-
-    // Trainer submits a finished draft ("pending"), or an admin approves or
-    // denies it — controls whether it's visible in the public course catalog.
-    // A denial carries the admin's feedback for the trainer; it stays on the
-    // course (so the trainer can act on it and resubmit) until approval.
-    setCourseStatus(state, action) {
-      const { courseId, status, reason } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      if (!course) return;
-      course.status = status;
-      if (status === "denied") course.review = { reason: reason?.trim() || "", deniedAt: new Date().toISOString() };
-      if (status === "approved") course.review = null;
-    },
-
-    // Trainer or admin adding a new topic to a course — used both from
-    // Admin > Courses manage page and from a trainer managing their class's
-    // materials.
-    addTopicToCourse: {
-      reducer(state, action) {
-        const { courseId, topic, revision } = action.payload;
-        const course = state.courses.find((c) => c.id === courseId);
-        if (!course) return;
-        topicsToEdit(course, revision).push(topic);
-      },
-      prepare({ courseId, title, description, revision }) {
-        return {
-          payload: {
-            courseId,
-            revision: !!revision,
-            topic: {
-              id: `${courseId}-t${nanoid(6)}`,
-              title,
-              description: description?.trim() || "",
-              lessons: [],
-              quiz: null,
-            },
-          },
-        };
-      },
-    },
-
-    removeTopicFromCourse(state, action) {
-      const { courseId, topicId, revision } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      if (!course) return;
-      const topics = topicsToEdit(course, revision);
-      topics.splice(0, topics.length, ...topics.filter((t) => t.id !== topicId));
-    },
-
-    // Adds a video/text/document lesson to an existing topic.
-    addLessonToTopic: {
-      reducer(state, action) {
-        const { courseId, topicId, lesson, revision } = action.payload;
-        const course = state.courses.find((c) => c.id === courseId);
-        const topic = course && topicsToEdit(course, revision).find((t) => t.id === topicId);
-        if (!topic) return;
-        topic.lessons.push(lesson);
-        if (!revision) course.durationMins += lesson.durationMins;
-      },
-      // `resources` are extra downloads (PDFs, docs, zips…): { name, url, size }.
-      prepare({ courseId, topicId, title, description, type, durationMins, videoUrl, body, fileUrl, resources, revision }) {
-        return {
-          payload: {
-            courseId,
-            revision: !!revision,
-            topicId,
-            lesson: {
-              id: `${topicId}-l${nanoid(6)}`,
-              title,
-              description: description?.trim() || "",
-              type,
-              durationMins: Number(durationMins) || 10,
-              videoUrl: type === "video" ? videoUrl || "" : undefined,
-              body: type === "text" ? body || "" : undefined,
-              fileUrl: type === "document" ? fileUrl || "" : undefined,
-              resources: resources || [],
-            },
-          },
-        };
-      },
-    },
-
-    removeLessonFromTopic(state, action) {
-      const { courseId, topicId, lessonId, revision } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      const topic = course && topicsToEdit(course, revision).find((t) => t.id === topicId);
-      if (!topic) return;
-      const lesson = topic.lessons.find((l) => l.id === lessonId);
-      if (lesson && !revision) course.durationMins -= lesson.durationMins;
-      topic.lessons = topic.lessons.filter((l) => l.id !== lessonId);
-    },
-
-    // Admin creates, edits or removes the certificate linked to a course from
-    // Admin > Certificates. Fields passed are merged into the existing
-    // certificate (so saving the title keeps a custom design `template`, and
-    // saving the design keeps the title). Passing a null certificate unlinks it.
-    setCourseCertificate(state, action) {
-      const { courseId, certificate } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      if (!course) return;
-      course.certificate = certificate
-        ? { issuer: "Learning & Development", ...course.certificate, ...certificate }
-        : null;
-    },
-
-    // Admin/trainer authors or edits a topic's quiz via QuizBuilder —
-    // replaces the quiz wholesale since the builder always submits the full
-    // working set of questions.
-    setTopicQuiz(state, action) {
-      const { courseId, topicId, title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions, revision } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      const topic = course && topicsToEdit(course, revision).find((t) => t.id === topicId);
-      if (!topic) return;
-      topic.quiz = {
-        title: title?.trim() || "",
-        passingScore: Number(passingScore) || 70,
-        timeLimitMins: Number(timeLimitMins) || null,
-        maxAttempts: Number(maxAttempts) || null,
-        showAnswers: showAnswers !== false,
-        questions: questions || [],
-      };
-    },
-
-    removeTopicQuiz(state, action) {
-      const { courseId, topicId, revision } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      const topic = course && topicsToEdit(course, revision).find((t) => t.id === topicId);
-      if (topic) topic.quiz = null;
-    },
-
-    // ── Updates to a live course (see topicsToEdit) ──
-    submitCourseUpdate(state, action) {
-      const course = state.courses.find((c) => c.id === action.payload.courseId);
-      if (course?.revision) course.revision.status = "pending";
-    },
-    discardCourseUpdate(state, action) {
-      const course = state.courses.find((c) => c.id === action.payload.courseId);
-      if (course) course.revision = null;
-    },
-    // Admin approves (publishes the updated topics) or denies with feedback.
-    reviewCourseUpdate(state, action) {
-      const { courseId, approve, reason } = action.payload;
-      const course = state.courses.find((c) => c.id === courseId);
-      if (!course?.revision) return;
-      if (approve) {
-        course.topics = course.revision.topics;
-        course.durationMins = lessonMinutes(course.topics);
-        course.updatedDate = new Date().toISOString().slice(0, 10);
-        course.revision = null;
-      } else {
-        course.revision.status = "denied";
-        course.revision.review = { reason: reason?.trim() || "", deniedAt: new Date().toISOString() };
-      }
+    // Courses also arrive embedded in enrollments and classes — merge them
+    // in so pages can look them up by id.
+    upsertCourses(state, action) {
+      action.payload.forEach((c) => upsert(state, c));
     },
   },
   extraReducers: (builder) => {
-    // Courses store their category by name, so follow admin renames.
-    builder.addCase(renameCategory, (state, action) => {
-      const { previousName, name } = action.payload;
-      state.courses.forEach((c) => {
-        if (c.category === previousName) c.category = name.trim();
-      });
-    });
+    builder
+      .addCase(fetchCourses.pending, (state) => {
+        state.status = "loading";
+      })
+      .addCase(fetchCourses.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        const ids = new Set(action.payload.map((c) => c.id));
+        // Drop courses that no longer exist server-side, then merge.
+        state.courses = state.courses.filter((c) => ids.has(c.id));
+        action.payload.forEach((c) => upsert(state, c));
+      })
+      .addCase(fetchCourses.rejected, (state) => {
+        state.status = "failed";
+      })
+      .addCase(fetchCourseContent.pending, (state, action) => {
+        const course = state.courses.find((c) => c.id === action.meta.arg);
+        if (course && course.contentStatus === "idle") course.contentStatus = "loading";
+      })
+      .addCase(fetchCourseContent.fulfilled, (state, action) => {
+        const { courseId, topics, revision, unavailable } = action.payload;
+        const index = state.courses.findIndex((c) => c.id === courseId);
+        if (index === -1) return;
+        if (unavailable) {
+          state.courses[index].contentStatus = "unavailable";
+          state.courses[index].contentError = unavailable;
+          return;
+        }
+        state.courses[index] = { ...withTopics(state.courses[index], topics), revision, contentStatus: "succeeded", contentError: null };
+      })
+      .addCase(fetchCourseContent.rejected, (state, action) => {
+        const course = state.courses.find((c) => c.id === action.meta.arg);
+        if (!course) return;
+        course.contentStatus = "failed";
+        course.contentError = action.payload;
+      })
+      .addCase(createCourse.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(updateCourse.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(reviewCourse.fulfilled, (state, action) => {
+        upsert(state, action.payload);
+        // The API doesn't return the denial reason with the course, so keep
+        // the one the admin just entered for this session.
+        const { courseId, status, reason } = action.meta.arg;
+        const course = state.courses.find((c) => c.id === courseId);
+        if (course && status === "denied") course.review = { reason: reason?.trim() || "", deniedAt: new Date().toISOString() };
+      })
+      .addCase(submitCourse.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(setCourseOwner.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(deleteCourse.fulfilled, (state, action) => {
+        state.courses = state.courses.filter((c) => c.id !== action.payload.courseId);
+      })
+      // Courses store their category by name, so follow admin renames.
+      .addCase(updateCategory.fulfilled, (state, action) => {
+        const { previousName } = action.meta.arg;
+        state.courses.forEach((c) => {
+          if (c.category === previousName) c.category = action.payload.name;
+        });
+      })
+      .addCase(logout, () => initialState);
   },
 });
 
-export const {
-  addCourse,
-  createBlankCourse,
-  setCourseStatus,
-  removeCourse,
-  setCourseOwner,
-  addTopicToCourse,
-  removeTopicFromCourse,
-  addLessonToTopic,
-  removeLessonFromTopic,
-  setCourseCertificate,
-  setTopicQuiz,
-  removeTopicQuiz,
-  submitCourseUpdate,
-  discardCourseUpdate,
-  reviewCourseUpdate,
-} = coursesSlice.actions;
+export const { upsertCourses } = coursesSlice.actions;
 export default coursesSlice.reducer;
 
 export const selectAllCourses = (state) => state.courses.courses;
-export const selectCourseById = (state, courseId) =>
-  state.courses.courses.find((c) => c.id === courseId);
+export const selectCoursesStatus = (state) => state.courses.status;
+export const selectCourseById = (state, courseId) => state.courses.courses.find((c) => c.id === courseId);
 // The public-facing catalog only ever shows approved courses — trainer
 // submissions stay invisible to learners until an admin reviews them.
-export const selectPublicCourses = (state) =>
-  state.courses.courses.filter((c) => (c.status || "approved") === "approved");
-export const selectCoursesByCreator = (state, creatorId) =>
-  state.courses.courses.filter((c) => c.createdBy === creatorId);
+export const selectPublicCourses = (state) => state.courses.courses.filter((c) => c.status === "approved");
+export const selectCoursesByCreator = (state, creatorId) => state.courses.courses.filter((c) => c.createdBy === creatorId);
 // New courses awaiting approval, plus live courses with a submitted update.
 export const selectPendingCourses = (state) =>
   state.courses.courses.filter((c) => c.status === "pending" || c.revision?.status === "pending");
@@ -304,4 +259,4 @@ export const selectPendingCourses = (state) =>
 // one, otherwise the live topics.
 export const editableTopicsOf = (course) => course.revision?.topics ?? course.topics;
 // Trainers' edits to a live course go through re-approval.
-export const editsNeedApproval = (course, user) => user?.role === "trainer" && (course.status || "approved") === "approved";
+export const editsNeedApproval = (course, user) => user?.role === "trainer" && course.status === "approved";

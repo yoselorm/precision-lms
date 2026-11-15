@@ -1,44 +1,42 @@
-import React, { useState } from "react";
+import React from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { Plus, CalendarDays, GraduationCap, Users, Settings2 } from "lucide-react";
+import { CalendarDays, GraduationCap, Users, Eye } from "lucide-react";
 import Header from "../components/Header";
-import ClassFormModal from "../components/ClassFormModal";
-import { selectAllClasses } from "../store/slices/classesSlice";
+import { selectAllClasses, selectClassesStatus } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
-import { selectAllUsers } from "../store/slices/usersSlice";
 
+// Classes are created and run by trainers — admins oversee them here.
 export default function AdminClasses({ onMenuClick }) {
   const navigate = useNavigate();
   const classes = useSelector(selectAllClasses);
+  const status = useSelector(selectClassesStatus);
   const courses = useSelector(selectAllCourses);
-  const users = useSelector(selectAllUsers);
-  const [showForm, setShowForm] = useState(false);
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title="Classes" subtitle={`${classes.length} scheduled cohorts`} onMenuClick={onMenuClick} />
+      <Header title="Classes" subtitle={`${classes.length} scheduled cohort${classes.length === 1 ? "" : "s"}`} onMenuClick={onMenuClick} />
 
       <div className="space-y-4 p-4 sm:p-6 lg:p-8">
-        <div className="flex justify-end">
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
-          >
-            <Plus size={14} /> Add class
-          </button>
-        </div>
+        <p className="text-xs text-stone-400">Trainers create classes from their Classes page.</p>
+
+        {classes.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-400">
+            {status === "loading" ? "Loading classes..." : "No classes yet."}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {classes.map((cls) => {
             const classCourses = (cls.courses || []).map((cc) => courses.find((c) => c.id === cc.courseId)).filter(Boolean);
-            const courseSummary =
-              classCourses.length === 0
+            // The list response doesn't include courses — only the detail does.
+            const courseSummary = !cls.courses
+              ? "Open the class to see its courses"
+              : classCourses.length === 0
                 ? "No courses attached"
                 : classCourses.length === 1
                 ? classCourses[0].title
                 : `${classCourses[0].title} +${classCourses.length - 1} more`;
-            const trainer = users.find((u) => u.id === cls.trainerId);
             return (
               <div
                 key={cls.id}
@@ -53,10 +51,10 @@ export default function AdminClasses({ onMenuClick }) {
                     <CalendarDays size={12} /> {cls.startDate} — {cls.endDate}
                   </p>
                   <p className="flex items-center gap-1.5">
-                    <GraduationCap size={12} /> {trainer?.name ?? "Unassigned"}
+                    <GraduationCap size={12} /> {cls.trainerName ?? "Unassigned"}
                   </p>
                   <p className="flex items-center gap-1.5">
-                    <Users size={12} /> {cls.memberIds.length} students
+                    <Users size={12} /> {cls.memberCount} student{cls.memberCount === 1 ? "" : "s"}
                   </p>
                 </div>
                 <button
@@ -66,15 +64,13 @@ export default function AdminClasses({ onMenuClick }) {
                   }}
                   className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50"
                 >
-                  <Settings2 size={13} /> Manage materials
+                  <Eye size={13} /> View materials
                 </button>
               </div>
             );
           })}
         </div>
       </div>
-
-      {showForm && <ClassFormModal onClose={() => setShowForm(false)} />}
     </div>
   );
 }

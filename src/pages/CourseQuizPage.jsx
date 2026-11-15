@@ -1,13 +1,16 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Header from "../components/Header";
 import QuizTaker from "../components/QuizTaker";
 import { selectCourseById } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectEnrollment, completeModule, submitQuizScore } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment, submitQuizScore } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import { getTopicQuiz } from "../api/courses";
+import { normalizeQuiz } from "../api/normalize";
+import { quizAttemptHandlers } from "../utils/quizAttempts";
 
 // A topic's quiz gets its own focused page — reached only from the "Start
 // quiz" button on the course player (CoursePlayer shows QuizIntroCard for
@@ -21,9 +24,37 @@ export default function CourseQuizPage({ onMenuClick }) {
   const currentUser = useSelector(selectCurrentUser);
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
 
-  const topic = course?.topics.find((t) => t.id === topicId);
+  const knownTopic = (course?.revision?.topics ?? course?.topics ?? []).find((t) => t.id === topicId);
 
-  if (!course || !currentUser || !topic) {
+  // Learners can't list a course's topics from the API, but they can read
+  // a topic's quiz by id — so load it straight from the URL's topic.
+  const [quizState, setQuizState] = useState({ status: "loading", quiz: null });
+  useEffect(() => {
+    let cancelled = false;
+    getTopicQuiz(topicId)
+      .then((q) => !cancelled && setQuizState({ status: "ready", quiz: normalizeQuiz(q) }))
+      .catch(() => !cancelled && setQuizState({ status: "ready", quiz: null }));
+    return () => {
+      cancelled = true;
+    };
+  }, [topicId]);
+  const quiz = quizState.quiz;
+  const topic = knownTopic ?? { id: topicId, title: quiz?.title || "Topic quiz" };
+
+  const handlers = useMemo(
+    () => quiz && quizAttemptHandlers({ topicId }, quiz, (message) => dispatch(pushToast({ type: "error", message }))),
+    [quiz, topicId, dispatch]
+  );
+
+  if (quizState.status === "loading" && course && currentUser) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center gap-2 text-sm text-stone-400">
+        <Loader2 size={16} className="animate-spin" /> Loading quiz...
+      </div>
+    );
+  }
+
+  if (!course || !currentUser) {
     return (
       <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">
         Quiz not found.{" "}
@@ -46,7 +77,7 @@ export default function CourseQuizPage({ onMenuClick }) {
     );
   }
 
-  const hasQuiz = (topic.quiz?.questions?.length ?? 0) > 0;
+  const hasQuiz = (quiz?.questions?.length ?? 0) > 0;
   if (!hasQuiz) {
     return (
       <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">
@@ -58,27 +89,18 @@ export default function CourseQuizPage({ onMenuClick }) {
     );
   }
 
-  const quizItemId = `${topic.id}__quiz`;
-  const allLessons = course.topics.flatMap((t) => t.lessons);
-  const topicsWithQuiz = course.topics.filter((t) => t.quiz?.questions?.length > 0);
-  const totalCompletable = allLessons.length + topicsWithQuiz.length;
-  const isItemComplete = (id) => (enrollment?.completedModuleIds ?? []).includes(id);
-
   const handleSubmit = (score, passed, timedOut) => {
     const previousAttempts = enrollment?.topicQuizzes?.[topic.id]?.attempts?.length ?? 0;
-    const wasLastAttempt = !!topic.quiz.maxAttempts && previousAttempts + 1 >= topic.quiz.maxAttempts;
-    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: topic.id, score, passingScore: topic.quiz.passingScore }));
-    if (!isItemComplete(quizItemId)) {
-      dispatch(completeModule({ userId: currentUser.id, courseId: course.id, moduleId: quizItemId, totalModules: totalCompletable }));
-    }
+    const wasLastAttempt = !!quiz.maxAttempts && previousAttempts + 1 >= quiz.maxAttempts;
+    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: topic.id, score, passingScore: quiz.passingScore, passed }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",
         message: timedOut
-          ? `Time's up — auto-submitted with ${score}% (passing score is ${topic.quiz.passingScore}%).`
+          ? `Time's up — auto-submitted with ${score}% (passing score is ${quiz.passingScore}%).`
           : passed
           ? `Quiz passed with ${score}%!`
-          : `Scored ${score}% — passing score is ${topic.quiz.passingScore}%.${wasLastAttempt ? " No attempts left." : " Retry when ready."}`,
+          : `Scored ${score}% — passing score is ${quiz.passingScore}%.${wasLastAttempt ? " No attempts left." : " Retry when ready."}`,
       })
     );
   };
@@ -94,7 +116,7 @@ export default function CourseQuizPage({ onMenuClick }) {
           <ArrowLeft size={14} /> Back to course
         </button>
         <QuizTaker
-          quiz={topic.quiz}
+          quiz={quiz}
           attempts={enrollment?.topicQuizzes?.[topic.id]?.attempts}
           heading="Knowledge check"
           subheading={topic.title}
@@ -103,6 +125,7 @@ export default function CourseQuizPage({ onMenuClick }) {
           backLabel="Back to course"
           hasCertificate={!!course.certificate}
           onViewCertificate={() => navigate("/certificates")}
+          {...handlers}
         />
       </div>
     </div>

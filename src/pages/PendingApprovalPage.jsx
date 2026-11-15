@@ -1,7 +1,7 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Clock, Ban, LogOut, Eye } from "lucide-react";
-import { selectCurrentUser, selectRealUser, logout, stopPreview } from "../store/slices/authSlice";
+import { selectCurrentUser, selectRealUser, logoutUser, stopPreview } from "../store/slices/authSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
 
 export default function PendingApprovalPage() {
@@ -36,7 +36,7 @@ export default function PendingApprovalPage() {
           </button>
         ) : (
           <button
-            onClick={() => dispatch(logout())}
+            onClick={() => dispatch(logoutUser())}
             className="mx-auto mt-6 flex items-center gap-1.5 rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50"
           >
             <LogOut size={14} /> Log out

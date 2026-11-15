@@ -1,31 +1,46 @@
 import React, { useState } from "react";
-import { useDispatch } from "react-redux";
 import { Link } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import LessonListEditor from "./LessonListEditor";
-import { addTopicToCourse, removeTopicFromCourse, editableTopicsOf } from "../store/slices/coursesSlice";
+import { addTopic, removeTopic, editableTopicsOf } from "../store/slices/coursesSlice";
+import { useApiAction } from "../hooks/useApiAction";
 
 // The single place topic/lesson editing for a course lives — one topic per
 // card, each with its own lessons (via LessonListEditor). Topic quizzes are
 // authored separately on the Quizzes page. Shared by the admin course-manage
 // page and a trainer managing materials for a class's attached course.
 // `readOnly` (admins) shows the same content with no editing controls.
-// `useRevision` works on (or shows) the course's pending update instead of
-// its live topics — see topicsToEdit in coursesSlice.
+// `useRevision` works on (or shows) the trainer's open update to a live
+// course instead of its live topics. Edits always go to whichever copy the
+// server considers editable.
 export default function CourseTopicsManager({ course, readOnly = false, useRevision = false }) {
   const topics = useRevision ? editableTopicsOf(course) : course.topics;
-  const revision = useRevision && !readOnly;
-  const dispatch = useDispatch();
+  const [run, busy] = useApiAction();
   const [newTopicTitle, setNewTopicTitle] = useState("");
   const [newTopicDescription, setNewTopicDescription] = useState("");
 
-  const handleAddTopic = (e) => {
+  const handleAddTopic = async (e) => {
     e.preventDefault();
     if (!newTopicTitle.trim()) return;
-    dispatch(addTopicToCourse({ courseId: course.id, title: newTopicTitle.trim(), description: newTopicDescription, revision }));
+    if (!(await run(addTopic({ courseId: course.id, title: newTopicTitle.trim(), description: newTopicDescription })))) return;
     setNewTopicTitle("");
     setNewTopicDescription("");
   };
+
+  if (course.contentStatus === "loading" || course.contentStatus === "idle") {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-400">
+        <Loader2 size={16} className="animate-spin" /> Loading topics...
+      </div>
+    );
+  }
+  if (course.contentStatus === "unavailable" || course.contentStatus === "failed") {
+    return (
+      <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-400">
+        {course.contentError || "Couldn't load this course's topics."}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -37,6 +52,8 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
 
       {topics.map((topic) => {
         const quizQuestionCount = topic.quiz?.questions?.length ?? 0;
+        // Admins can't read quizzes from the API, so don't claim "no quiz".
+        const quizLabel = readOnly ? "quiz details unavailable" : quizQuestionCount ? `quiz: ${quizQuestionCount} questions` : "no quiz";
         return (
           <div key={topic.id} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
             <div className="flex items-start justify-between gap-2">
@@ -45,7 +62,7 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
                 {topic.description && <p className="mt-0.5 text-xs text-stone-500">{topic.description}</p>}
                 <p className="mt-0.5 text-[11px] text-stone-400">
                   {topic.lessons.length} lesson{topic.lessons.length !== 1 ? "s" : ""} ·{" "}
-                  {quizQuestionCount ? `quiz: ${quizQuestionCount} questions` : "no quiz"} ·{" "}
+                  {quizLabel} ·{" "}
                   <Link to="/quizzes" className="font-semibold text-brand-700 hover:underline">
                     {readOnly ? "view in Quizzes" : quizQuestionCount ? "edit in Quizzes" : "add in Quizzes"}
                   </Link>
@@ -54,7 +71,8 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
               {!readOnly && (
                 <div className="flex shrink-0 items-center gap-2">
                   <button
-                    onClick={() => dispatch(removeTopicFromCourse({ courseId: course.id, topicId: topic.id, revision }))}
+                    onClick={() => run(removeTopic({ courseId: course.id, topicId: topic.id }))}
+                    disabled={busy}
                     title="Remove this topic"
                     className="flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:bg-rose-50"
                   >
@@ -64,7 +82,7 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
               )}
             </div>
 
-            <LessonListEditor courseId={course.id} topicId={topic.id} lessons={topic.lessons} readOnly={readOnly} revision={revision} />
+            <LessonListEditor courseId={course.id} topicId={topic.id} lessons={topic.lessons} readOnly={readOnly} />
           </div>
         );
       })}
@@ -96,8 +114,8 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
               className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600"
             />
           </div>
-          <button type="submit" className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-800">
-            <Plus size={13} /> Add topic
+          <button type="submit" disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add topic
           </button>
         </form>
       )}

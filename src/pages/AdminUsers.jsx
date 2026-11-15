@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Plus, X, Check, Ban, Clock } from "lucide-react";
 import Header from "../components/Header";
-import { selectAllUsers, addUser, setUserStatus, selectUserByEmail } from "../store/slices/usersSlice";
+import { selectAllUsers, selectUsersStatus, createUser, setUserStatus, updateUserRole, selectUserByEmail } from "../store/slices/usersSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "../components/ModalOverlay";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -37,17 +38,18 @@ function generatePassword() {
 
 function UserFormModal({ onClose }) {
   const dispatch = useDispatch();
+  const [run, saving] = useApiAction();
   const [form, setForm] = useState({ name: "", email: "", password: generatePassword(), department: "", role: "learner" });
   const [error, setError] = useState("");
 
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     if (!form.name.trim() || !form.email.trim()) return;
-    if (form.password.length < 6) {
-      setError("The temporary password must be at least 6 characters.");
+    if (form.password.length < 8) {
+      setError("The temporary password must be at least 8 characters.");
       return;
     }
     const exists = dispatch((_, getState) => selectUserByEmail(getState(), form.email.trim()));
@@ -57,14 +59,10 @@ function UserFormModal({ onClose }) {
     }
     // Admin-created accounts are approved immediately, regardless of role —
     // the approval step only applies to trainers who self-signed-up.
-    dispatch(addUser({ ...form, email: form.email.trim(), status: "approved" }));
-    dispatch(
-      pushToast({
-        type: "success",
-        message: `${form.name} was added as a ${form.role}. They can sign in with ${form.email.trim()} and the temporary password.`,
-      })
-    );
-    onClose();
+    const created = await run(createUser({ ...form, name: form.name.trim(), email: form.email.trim() }), {
+      successMessage: `${form.name} was added as a ${form.role}. They can sign in with ${form.email.trim()} and the temporary password.`,
+    });
+    if (created) onClose();
   };
 
   return (
@@ -145,8 +143,8 @@ function UserFormModal({ onClose }) {
           <button type="button" onClick={onClose} className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50">
             Cancel
           </button>
-          <button type="submit" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
-            Add user
+          <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+            {saving ? "Adding..." : "Add user"}
           </button>
         </div>
       </form>
@@ -155,8 +153,9 @@ function UserFormModal({ onClose }) {
 }
 
 export default function AdminUsers({ onMenuClick }) {
-  const dispatch = useDispatch();
+  const [run, busy] = useApiAction();
   const users = useSelector(selectAllUsers);
+  const usersStatus = useSelector(selectUsersStatus);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
   const confirm = useConfirm();
@@ -168,6 +167,20 @@ export default function AdminUsers({ onMenuClick }) {
     if (filter === "pending") return users.filter((u) => u.status === "pending");
     return users.filter((u) => u.role === filter);
   }, [users, filter]);
+
+  const handleRoleChange = async (user, role) => {
+    if (role === user.role) return;
+    const ok = await confirm({
+      title: `Make ${user.name} a ${role}?`,
+      message:
+        role === "trainer"
+          ? "They'll be able to create courses and run classes."
+          : "They'll lose trainer access — their courses and classes stay in place.",
+      confirmLabel: `Make ${role}`,
+    });
+    if (!ok) return;
+    await run(updateUserRole({ userId: user.id, role }), { successMessage: `${user.name} is now a ${role}.` });
+  };
 
   const handleStatusChange = async (user, status) => {
     if (status === "approved") {
@@ -181,13 +194,9 @@ export default function AdminUsers({ onMenuClick }) {
       });
       if (!ok) return;
     }
-    dispatch(setUserStatus({ userId: user.id, status }));
-    dispatch(
-      pushToast({
-        type: status === "approved" ? "success" : "info",
-        message: `${user.name} was ${status === "approved" ? "approved" : "denied"}.`,
-      })
-    );
+    await run(setUserStatus({ userId: user.id, status }), {
+      successMessage: `${user.name} was ${status === "approved" ? "approved" : "denied"}.`,
+    });
   };
 
   return (
@@ -234,7 +243,7 @@ export default function AdminUsers({ onMenuClick }) {
             </thead>
             <tbody className="divide-y divide-stone-100">
               {filtered.map((u) => {
-                const status = u.status || "approved";
+                const status = u.status;
                 return (
                   <tr key={u.id}>
                     <td className="flex items-center gap-2.5 px-4 py-3">
@@ -242,9 +251,18 @@ export default function AdminUsers({ onMenuClick }) {
                       <span className="font-semibold text-stone-800">{u.name}</span>
                     </td>
                     <td className="px-4 py-3 text-stone-500">{u.email || "—"}</td>
-                    <td className="px-4 py-3 text-stone-500">{u.department}</td>
+                    <td className="px-4 py-3 text-stone-500">{u.department || "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${ROLE_PILL[u.role]}`}>{u.role}</span>
+                      <select
+                        value={u.role}
+                        disabled={busy}
+                        onChange={(e) => handleRoleChange(u, e.target.value)}
+                        title="Change role"
+                        className={`cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize outline-none ${ROLE_PILL[u.role]}`}
+                      >
+                        <option value="learner">learner</option>
+                        <option value="trainer">trainer</option>
+                      </select>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`flex w-fit items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold capitalize ${STATUS_PILL[status]}`}>
@@ -257,7 +275,8 @@ export default function AdminUsers({ onMenuClick }) {
                         <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => handleStatusChange(u, "approved")}
-                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700"
+                            disabled={busy}
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                           >
                             <Check size={11} /> Approve
                           </button>
@@ -283,7 +302,11 @@ export default function AdminUsers({ onMenuClick }) {
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && <p className="p-4 text-center text-xs text-stone-400">No users match this filter.</p>}
+          {filtered.length === 0 && (
+            <p className="p-4 text-center text-xs text-stone-400">
+              {usersStatus === "loading" ? "Loading users..." : users.length === 0 ? "No learners or trainers yet." : "No users match this filter."}
+            </p>
+          )}
         </div>
       </div>
 

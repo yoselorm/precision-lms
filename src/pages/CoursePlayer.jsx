@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye } from "lucide-react";
-import { selectCourseById } from "../store/slices/coursesSlice";
+import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye, Loader2 } from "lucide-react";
+import { selectCourseById, selectCoursesStatus, fetchCourseContent } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAssignmentsByCourse } from "../store/slices/assignmentsSlice";
-import { selectEnrollment, completeModule, enrollUser } from "../store/slices/enrollmentsSlice";
-import { pushToast } from "../store/slices/uiSlice";
+import { selectEnrollment, enrollInCourse, completeLesson } from "../store/slices/enrollmentsSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
 import QuizPreview from "../components/QuizPreview";
@@ -22,11 +22,21 @@ export default function CoursePlayer({ onMenuClick }) {
   const dispatch = useDispatch();
 
   const course = useSelector((state) => selectCourseById(state, courseId));
+  const coursesStatus = useSelector(selectCoursesStatus);
   const currentUser = useSelector(selectCurrentUser);
+  const [run, busy] = useApiAction();
+  const courseLoaded = !!course;
+
+  useEffect(() => {
+    if (courseLoaded && currentUser) dispatch(fetchCourseContent(courseId));
+  }, [dispatch, courseId, courseLoaded, currentUser]);
+
+  // A trainer only sees their live course's content through an open update.
+  const topics = course ? course.revision?.topics ?? course.topics : [];
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
   const courseAssignments = useSelector((state) => selectAssignmentsByCourse(state, courseId));
 
-  const firstLessonId = course?.topics[0]?.lessons[0]?.id;
+  const firstLessonId = topics[0]?.lessons[0]?.id;
   const [activeItemId, setActiveItemId] = useState(firstLessonId);
 
   useEffect(() => {
@@ -35,13 +45,36 @@ export default function CoursePlayer({ onMenuClick }) {
 
   const { activeTopic, activeLesson, isQuizActive } = useMemo(() => {
     if (!course) return {};
-    for (const topic of course.topics) {
+    for (const topic of topics) {
       const lesson = topic.lessons.find((l) => l.id === activeItemId);
       if (lesson) return { activeTopic: topic, activeLesson: lesson, isQuizActive: false };
       if (activeItemId === `${topic.id}__quiz`) return { activeTopic: topic, activeLesson: null, isQuizActive: true };
     }
     return {};
-  }, [course, activeItemId]);
+  }, [course, topics, activeItemId]);
+
+  // Course data needs a signed-in user — the API has no public catalog.
+  if (!course && !currentUser) {
+    return (
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-stone-500">
+        Sign in to see this course.
+        <button
+          onClick={() => navigate("/login", { state: { from: `/course/${courseId}` } })}
+          className="rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800"
+        >
+          Log in or sign up
+        </button>
+      </div>
+    );
+  }
+
+  if (!course && (coursesStatus === "idle" || coursesStatus === "loading")) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center gap-2 text-sm text-stone-400">
+        <Loader2 size={16} className="animate-spin" /> Loading course...
+      </div>
+    );
+  }
 
   if (!course) {
     return (
@@ -54,7 +87,7 @@ export default function CoursePlayer({ onMenuClick }) {
   // Courses awaiting (or denied) admin approval aren't public — only an
   // admin, or the trainer who authored it, can open the player to preview
   // it while it's still under review.
-  const courseStatus = course.status || "approved";
+  const courseStatus = course.status;
   const canPreviewUnapproved = currentUser?.role === "admin" || (currentUser?.role === "trainer" && course.createdBy === currentUser.id);
   if (courseStatus !== "approved" && !canPreviewUnapproved) {
     return (
@@ -68,15 +101,18 @@ export default function CoursePlayer({ onMenuClick }) {
   // topic titles). Only learners can enroll; admins and the course's own
   // trainer can open the full player as a read-only preview.
   const isLearner = currentUser?.role === "learner";
-  if (!enrollment && !canPreviewUnapproved) {
+  // Enrolled learners also land here while the server can't hand them the
+  // course's lessons (no learner-facing content endpoint yet).
+  const contentUnavailable = course.contentStatus === "unavailable";
+  if ((!enrollment && !canPreviewUnapproved) || (enrollment && contentUnavailable)) {
     return (
       <CourseOverview
         course={course}
+        topics={topics}
         currentUser={currentUser}
-        onEnroll={() => {
-          dispatch(enrollUser({ userId: currentUser.id, courseId: course.id }));
-          dispatch(pushToast({ type: "success", message: `Enrolled in "${course.title}".` }));
-        }}
+        enrollment={enrollment}
+        enrolling={busy}
+        onEnroll={() => run(enrollInCourse({ courseId: course.id }), { successMessage: `Enrolled in "${course.title}".` })}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/catalog"))}
       />
     );
@@ -85,18 +121,11 @@ export default function CoursePlayer({ onMenuClick }) {
   const completedIds = enrollment?.completedModuleIds ?? [];
   const isItemComplete = (id) => completedIds.includes(id);
 
-  const allLessons = course.topics.flatMap((t) => t.lessons);
-  const topicsWithQuiz = course.topics.filter((t) => t.quiz?.questions?.length > 0);
-  const totalCompletable = allLessons.length + topicsWithQuiz.length;
-
-  const markItemDone = (moduleId) => {
-    dispatch(completeModule({ userId: currentUser.id, courseId: course.id, moduleId, totalModules: totalCompletable }));
-  };
-
-  const handleMarkComplete = () => {
-    markItemDone(activeLesson.id);
-    dispatch(pushToast({ type: "success", message: `"${activeLesson.title}" marked as complete.` }));
-  };
+  // Progress is recomputed server-side from completed lessons.
+  const handleMarkComplete = () =>
+    run(completeLesson({ enrollmentId: enrollment.id, lessonId: activeLesson.id }), {
+      successMessage: `"${activeLesson.title}" marked as complete.`,
+    });
 
   const switchItem = (id) => setActiveItemId(id);
 
@@ -130,7 +159,19 @@ export default function CoursePlayer({ onMenuClick }) {
         )}
 
         <div className="space-y-3">
-          {course.topics.map((topic) => {
+          {course.contentStatus === "loading" && (
+            <p className="flex items-center gap-1.5 px-1 text-xs text-stone-400">
+              <Loader2 size={13} className="animate-spin" /> Loading content...
+            </p>
+          )}
+          {course.contentStatus === "succeeded" && topics.length === 0 && (
+            <p className="px-1 text-xs text-stone-400">
+              {course.status === "approved" && course.createdBy === currentUser?.id
+                ? "Start an update from the course page to see and edit this live course's content."
+                : "No topics yet."}
+            </p>
+          )}
+          {topics.map((topic) => {
             const hasQuiz = (topic.quiz?.questions?.length ?? 0) > 0;
             const quizId = `${topic.id}__quiz`;
             return (
@@ -269,7 +310,7 @@ export default function CoursePlayer({ onMenuClick }) {
             {isLearner && (
               <button
                 onClick={handleMarkComplete}
-                disabled={isItemComplete(activeLesson.id)}
+                disabled={busy || isItemComplete(activeLesson.id)}
                 className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isItemComplete(activeLesson.id) ? "Completed" : "Mark as complete"}
@@ -307,16 +348,13 @@ export default function CoursePlayer({ onMenuClick }) {
 
 // Pre-enrollment view: description and topic titles only — no lessons,
 // videos, quizzes or assignments. Anyone can see it; only learners get an
-// Enroll button.
-function CourseOverview({ course, currentUser, onEnroll, onBack }) {
+// Enroll button. Enrolled learners see it too while the course's materials
+// can't be loaded from the server.
+function CourseOverview({ course, topics, currentUser, enrollment, enrolling, onEnroll, onBack }) {
   const navigate = useNavigate();
-  const [enrolling, setEnrolling] = useState(false);
   const goTo = (tab) => navigate("/login", { state: { from: `/course/${course.id}`, tab } });
-
-  const handleEnroll = () => {
-    setEnrolling(true);
-    onEnroll();
-  };
+  const handleEnroll = () => onEnroll();
+  const topicsKnown = course.contentStatus === "succeeded";
 
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto bg-stone-50">
@@ -339,9 +377,11 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{course.category}</span>
                 <h1 className="mt-1 text-xl font-bold text-stone-900 sm:text-2xl">{course.title}</h1>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-stone-500">
-                  <span className="flex items-center gap-1">
-                    <Layers size={13} /> {course.topics.length} {course.topics.length === 1 ? "topic" : "topics"}
-                  </span>
+                  {topicsKnown && (
+                    <span className="flex items-center gap-1">
+                      <Layers size={13} /> {topics.length} {topics.length === 1 ? "topic" : "topics"}
+                    </span>
+                  )}
                   {course.durationMins > 0 && (
                     <span className="flex items-center gap-1">
                       <Clock size={13} /> {course.durationMins} min
@@ -364,9 +404,13 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
 
             <div className="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
               <h2 className="text-sm font-bold text-stone-800">Topics covered</h2>
-              <p className="mt-0.5 text-xs text-stone-400">Enroll to unlock the course materials.</p>
+              <p className="mt-0.5 text-xs text-stone-400">
+                {enrollment
+                  ? "You're enrolled. The course materials aren't available from the server yet — check back soon."
+                  : "Enroll to unlock the course materials."}
+              </p>
               <ol className="mt-4 divide-y divide-stone-100">
-                {course.topics.map((topic, i) => (
+                {topics.map((topic, i) => (
                   <li key={topic.id} className="flex items-center gap-3 py-3">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-xs font-bold text-brand-700">
                       {i + 1}
@@ -378,7 +422,7 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
                     <Lock size={13} className="shrink-0 text-stone-300" />
                   </li>
                 ))}
-                {course.topics.length === 0 && <li className="py-3 text-xs text-stone-400">Topics are coming soon.</li>}
+                {topics.length === 0 && <li className="py-3 text-xs text-stone-400">Topics are coming soon.</li>}
               </ol>
             </div>
           </div>
@@ -407,6 +451,10 @@ function CourseOverview({ course, currentUser, onEnroll, onBack }) {
                     </button>
                   </div>
                 </>
+              ) : currentUser.role === "learner" && enrollment ? (
+                <p className="mt-3 flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800">
+                  <CheckCircle2 size={14} /> You're enrolled · {enrollment.progress}% complete
+                </p>
               ) : currentUser.role === "learner" ? (
                 <>
                   <button

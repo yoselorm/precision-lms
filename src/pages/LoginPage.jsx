@@ -1,35 +1,11 @@
 import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import {
-  GraduationCap,
-  ShieldCheck,
-  BookOpen,
-  Clock,
-  ArrowRight,
-  Loader2,
-  AlertCircle,
-  ChevronDown,
-  Copy,
-  HelpCircle,
-  Eye,
-  EyeOff,
-} from "lucide-react";
-import { login } from "../store/slices/authSlice";
-import { selectAllUsers, addUser, selectUserByEmail } from "../store/slices/usersSlice";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { Clock, ArrowRight, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { loginUser, registerUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
 import authHero from "../assets/images/auth-hero.webp";
-
-const ROLE_META = {
-  learner: { label: "Learner", icon: BookOpen, color: "#16a34a" },
-  admin: { label: "Admin", icon: ShieldCheck, color: "#dc2626" },
-  trainer: { label: "Trainer", icon: GraduationCap, color: "#7c3aed" },
-};
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function Field({ label, action, children }) {
   return (
@@ -81,56 +57,7 @@ function PasswordField({ label, value, onChange, placeholder, autoComplete, acti
   );
 }
 
-function DemoAccountsPanel({ onFill }) {
-  const users = useSelector(selectAllUsers);
-  const [open, setOpen] = useState(false);
-
-  const representative = ["learner", "trainer", "admin"]
-    .map((role) => users.find((u) => u.role === role && (u.status || "approved") === "approved"))
-    .filter(Boolean);
-
-  return (
-    <div className="mt-8 rounded-xl border border-stone-200 bg-stone-50">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold text-stone-600 transition hover:text-stone-900"
-      >
-        <span className="flex items-center gap-1.5">
-          <HelpCircle size={13} className="text-brand-700" /> Try a demo account
-        </span>
-        <ChevronDown size={13} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="space-y-1.5 px-3 pb-3 pt-1">
-          {representative.map((u) => {
-            const meta = ROLE_META[u.role];
-            const Icon = meta.icon;
-            return (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => onFill(u.email, u.password)}
-                className="flex w-full items-center gap-2 rounded-lg border border-stone-200/80 bg-white px-2.5 py-1.5 text-left text-xs transition hover:border-brand-500 hover:bg-brand-50/50"
-              >
-                <Icon size={13} style={{ color: meta.color }} className="shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-stone-800">{meta.label}</p>
-                  <p className="truncate text-[10px] text-stone-400">{u.email}</p>
-                </div>
-                <span className="flex shrink-0 items-center gap-1 rounded bg-stone-100 px-1.5 py-0.5 text-[9px] font-semibold text-stone-600">
-                  <Copy size={9} /> Fill
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LoginTab({ onLoggedIn }) {
+function LoginTab({ onLoggedIn, portal }) {
   const dispatch = useDispatch();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -147,20 +74,16 @@ function LoginTab({ onLoggedIn }) {
       return;
     }
     setLoading(true);
-    await delay(600);
+    const result = await dispatch(loginUser({ email: form.email.trim(), password: form.password, portal }));
+    setLoading(false);
 
-    const state = dispatch((_, getState) => getState());
-    const user = selectUserByEmail(state, form.email);
-
-    if (!user || user.password !== form.password) {
-      setLoading(false);
-      setError("Invalid email or password.");
+    if (loginUser.rejected.match(result)) {
+      setError(result.payload || "Couldn't sign you in. Please try again.");
       return;
     }
 
-    dispatch(login(user));
+    const { user } = result.payload;
     dispatch(pushToast({ type: "success", message: `Welcome back, ${user.name.split(" ")[0]}.` }));
-    setLoading(false);
     onLoggedIn();
   };
 
@@ -215,8 +138,6 @@ function LoginTab({ onLoggedIn }) {
           Forgot password?
         </button>
       </form>
-
-      <DemoAccountsPanel onFill={(email, password) => setForm({ email, password })} />
     </div>
   );
 }
@@ -249,8 +170,8 @@ function SignupTab({ onSignedUp }) {
       setError("Enter a valid email address.");
       return;
     }
-    if (form.password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -259,33 +180,29 @@ function SignupTab({ onSignedUp }) {
     }
 
     setLoading(true);
-    await delay(600);
-
-    const state = dispatch((_, getState) => getState());
-    if (selectUserByEmail(state, form.email)) {
-      setLoading(false);
-      setError("An account with this email already exists.");
-      return;
-    }
-
-    const action = dispatch(
-      addUser({
-        name: form.name,
-        email: form.email,
+    const result = await dispatch(
+      registerUser({
+        name: form.name.trim(),
+        email: form.email.trim(),
         password: form.password,
-        department: form.department || "General",
+        department: form.department.trim(),
         role: form.role,
       })
     );
-    const newUser = action.payload;
-    dispatch(login(newUser));
     setLoading(false);
 
-    if (newUser.role === "trainer" && newUser.status === "pending") {
+    if (registerUser.rejected.match(result)) {
+      setError(result.payload || "Couldn't create your account. Please try again.");
+      return;
+    }
+
+    const { user, token } = result.payload;
+    // No token means the account is a trainer awaiting admin approval.
+    if (!token) {
       setPendingNotice(true);
       return;
     }
-    dispatch(pushToast({ type: "success", message: `Account created — welcome, ${newUser.name.split(" ")[0]}.` }));
+    dispatch(pushToast({ type: "success", message: `Account created — welcome, ${user.name.split(" ")[0]}.` }));
     onSignedUp();
   };
 
@@ -297,7 +214,7 @@ function SignupTab({ onSignedUp }) {
         </div>
         <h2 className="text-sm font-bold text-stone-900">Your trainer account is pending approval</h2>
         <p className="text-xs text-stone-500">
-          Thanks for signing up, {form.name.split(" ")[0]}. An admin must approve trainer accounts before you can manage courses.
+          Thanks for signing up, {form.name.split(" ")[0]}. An admin must approve trainer accounts before you can sign in. You'll be able to log in as soon as you're approved.
         </p>
         <button
           onClick={onSignedUp}
@@ -340,7 +257,7 @@ function SignupTab({ onSignedUp }) {
           label="Password"
           value={form.password}
           onChange={(e) => update("password", e.target.value)}
-          placeholder="6+ chars"
+          placeholder="8+ chars"
         />
         <PasswordField
           label="Confirm"
@@ -388,14 +305,17 @@ function SignupTab({ onSignedUp }) {
   );
 }
 
-export default function LoginPage() {
+// Two entry points: `/login` for learners and trainers (with sign-up), and
+// `/admin/login` (portal="admin") for admins only.
+export default function LoginPage({ portal = "user" }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [tab, setTab] = useState(location.state?.tab === "signup" ? "signup" : "login");
+  const isAdminPortal = portal === "admin";
+  const [tab, setTab] = useState(!isAdminPortal && location.state?.tab === "signup" ? "signup" : "login");
   const redirectTo = location.state?.from || "/";
 
   const goNext = () => navigate(redirectTo, { replace: true });
-  const isLogin = tab === "login";
+  const isLogin = isAdminPortal || tab === "login";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white">
@@ -411,11 +331,18 @@ export default function LoginPage() {
               <span className="text-base font-extrabold tracking-tight text-stone-900">Afenet LMS</span>
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
-              Workplace learning &amp; development
+              {isAdminPortal ? "Administration" : "Workplace learning & development"}
             </p>
           </div>
 
-          {/* Navigation Tabs */}
+          {/* Navigation Tabs — admins have no sign-up */}
+          {isAdminPortal ? (
+            <div className="mb-8 flex justify-center">
+              <span className="flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-800">
+                <ShieldCheck size={13} /> Admin sign in
+              </span>
+            </div>
+          ) : (
           <div className="mb-8 flex justify-center gap-8 border-b border-stone-100">
             <button
               onClick={() => setTab("login")}
@@ -434,14 +361,17 @@ export default function LoginPage() {
               Sign Up
             </button>
           </div>
+          )}
 
           {/* Title and Body */}
           <div className="mb-8 text-center">
             <h1 className="text-xl sm:text-2xl font-black text-stone-900">
-              {isLogin ? "Welcome Back" : "Create Your Account"}
+              {isAdminPortal ? "Admin Portal" : isLogin ? "Welcome Back" : "Create Your Account"}
             </h1>
             <p className="mt-2 text-xs text-stone-500">
-              {location.state?.from
+              {isAdminPortal
+                ? "Sign in with your administrator account."
+                : location.state?.from
                 ? "Sign in or create an account to continue enrolling."
                 : isLogin
                 ? "Sign in to access your courses and dashboard."
@@ -449,7 +379,25 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {isLogin ? <LoginTab onLoggedIn={goNext} /> : <SignupTab onSignedUp={goNext} />}
+          {isLogin ? <LoginTab onLoggedIn={goNext} portal={portal} /> : <SignupTab onSignedUp={goNext} />}
+
+          <p className="mt-6 text-center text-[11px] text-stone-400">
+            {isAdminPortal ? (
+              <>
+                Learner or trainer?{" "}
+                <Link to="/login" className="font-semibold text-brand-700 hover:underline">
+                  Sign in here
+                </Link>
+              </>
+            ) : (
+              <>
+                Administrator?{" "}
+                <Link to="/admin/login" className="font-semibold text-brand-700 hover:underline">
+                  Use the admin login
+                </Link>
+              </>
+            )}
+          </p>
         </div>
 
         {/* Subtle Footer */}

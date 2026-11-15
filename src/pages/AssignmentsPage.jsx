@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { BookOpen, CalendarDays, FileCheck2, Lock, LockOpen, Pencil, Plus, Trash2, X } from "lucide-react";
 import Header from "../components/Header";
@@ -7,7 +7,6 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllClasses } from "../store/slices/classesSlice";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
-import { selectAllUsers } from "../store/slices/usersSlice";
 import {
   selectAllAssignments,
   addAssignment,
@@ -16,8 +15,8 @@ import {
   removeAssignment,
   isAssignmentClosed,
 } from "../store/slices/assignmentsSlice";
-import { selectAllSubmissions } from "../store/slices/submissionsSlice";
-import { pushToast } from "../store/slices/uiSlice";
+import { selectAllSubmissions, fetchSubmissions, gradeSubmission } from "../store/slices/submissionsSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
 
@@ -89,7 +88,7 @@ function Tabs({ tabs, value, onChange }) {
 // Create or edit an assignment. When creating, the author first picks what
 // it belongs to — a course or a particular class. When editing, that's fixed.
 function AssignmentFormModal({ courses, classes, editing, onClose }) {
-  const dispatch = useDispatch();
+  const [run, saving] = useApiAction();
   const [type, setType] = useState(editing?.type || "course");
   const [courseId, setCourseId] = useState(editing?.assignment.courseId || courses[0]?.id || "");
   const [classId, setClassId] = useState(editing?.assignment.classId || classes[0]?.id || "");
@@ -100,17 +99,15 @@ function AssignmentFormModal({ courses, classes, editing, onClose }) {
 
   const targetChosen = type === "course" ? !!courseId : !!classId;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !targetChosen) return;
     const fields = { title: title.trim(), instructions, dueDate, autoCloseOnDueDate: autoCloseOnDueDate && !!dueDate };
-    if (editing) {
-      dispatch(updateAssignment({ id: editing.assignment.id, ...fields }));
-    } else {
-      dispatch(addAssignment({ ...fields, ...(type === "course" ? { courseId } : { classId }) }));
-    }
-    dispatch(pushToast({ type: "success", message: editing ? "Assignment updated." : `Assignment "${fields.title}" created.` }));
-    onClose();
+    const action = editing
+      ? updateAssignment({ id: editing.assignment.id, ...fields })
+      : addAssignment({ ...fields, ...(type === "course" ? { courseId } : { classId }) });
+    const ok = await run(action, { successMessage: editing ? "Assignment updated." : `Assignment "${fields.title}" created.` });
+    if (ok) onClose();
   };
 
   return (
@@ -220,7 +217,7 @@ function AssignmentFormModal({ courses, classes, editing, onClose }) {
           </button>
           <button
             type="submit"
-            disabled={!targetChosen}
+            disabled={saving || !targetChosen}
             className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {editing ? "Save changes" : "Create assignment"}
@@ -231,14 +228,95 @@ function AssignmentFormModal({ courses, classes, editing, onClose }) {
   );
 }
 
-function SubmissionsModal({ row, submissions, users, onClose }) {
+// One submission in the trainer's list — open the file, and grade it with
+// optional feedback (the learner sees both).
+function SubmissionRow({ submission }) {
+  const [run, saving] = useApiAction();
+  const [grading, setGrading] = useState(false);
+  const [grade, setGrade] = useState(submission.grade || "");
+  const [feedback, setFeedback] = useState(submission.feedback || "");
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!grade.trim()) return;
+    const ok = await run(gradeSubmission({ id: submission.id, grade: grade.trim(), feedback: feedback.trim() }), {
+      successMessage: `Graded ${submission.userName ?? "the submission"}.`,
+    });
+    if (ok) setGrading(false);
+  };
+
+  return (
+    <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs">
+      <div className="flex items-center gap-2">
+        <a href={submission.fileUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 hover:underline">
+          <p className="font-semibold text-stone-700">{submission.userName ?? "Unknown learner"}</p>
+          <p className="truncate text-[10px] text-stone-400">
+            {submission.fileName}
+            {submission.submittedAt ? ` · ${new Date(submission.submittedAt).toLocaleDateString()}` : ""}
+          </p>
+        </a>
+        {submission.status === "graded" && !grading && (
+          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+            {submission.grade}
+          </span>
+        )}
+        {!grading && (
+          <button
+            type="button"
+            onClick={() => setGrading(true)}
+            className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-stone-600 hover:bg-stone-100"
+          >
+            {submission.status === "graded" ? "Regrade" : "Grade"}
+          </button>
+        )}
+      </div>
+      {submission.feedback && !grading && <p className="mt-1.5 whitespace-pre-line text-[11px] text-stone-500">{submission.feedback}</p>}
+      {grading && (
+        <form onSubmit={save} className="mt-2 space-y-2">
+          <input
+            autoFocus
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            placeholder="Grade, e.g. A, Pass or 85/100"
+            className={inputClass}
+          />
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            rows={3}
+            placeholder="Feedback for the learner (optional)"
+            className={inputClass}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setGrading(false)} className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-stone-600 hover:bg-stone-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !grade.trim()}
+              className="rounded-lg bg-brand-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-800 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save grade"}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function SubmissionsModal({ row, submissions, onClose }) {
+  const graded = submissions.filter((s) => s.status === "graded").length;
   return (
     <ModalOverlay>
       <div className="max-h-[80vh] w-full max-w-md animate-scale-in overflow-y-auto rounded-2xl bg-white p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-base font-bold text-stone-900">{row.assignment.title}</h2>
-            <p className="text-xs text-stone-400">{submissions.length} submission{submissions.length === 1 ? "" : "s"}</p>
+            <p className="text-xs text-stone-400">
+              {submissions.length} submission{submissions.length === 1 ? "" : "s"}
+              {submissions.length > 0 && ` · ${graded} graded`}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
             <X size={18} />
@@ -248,25 +326,9 @@ function SubmissionsModal({ row, submissions, users, onClose }) {
           <p className="text-sm text-stone-400">No submissions yet.</p>
         ) : (
           <div className="space-y-1.5">
-            {submissions.map((s) => {
-              const student = users.find((u) => u.id === s.userId);
-              return (
-                <a
-                  key={s.id}
-                  href={s.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 rounded-lg bg-stone-50 px-3 py-2 text-xs hover:bg-stone-100"
-                >
-                  <img src={student?.avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-stone-700">{student?.name ?? "Unknown learner"}</p>
-                    <p className="truncate text-[10px] text-stone-400">{s.fileName}</p>
-                  </div>
-                  <span className="shrink-0 text-[10px] text-stone-400">{new Date(s.submittedAt).toLocaleDateString()}</span>
-                </a>
-              );
-            })}
+            {submissions.map((s) => (
+              <SubmissionRow key={s.id} submission={s} />
+            ))}
           </div>
         )}
       </div>
@@ -279,12 +341,12 @@ function SubmissionsModal({ row, submissions, users, onClose }) {
 // only view them — setting assignments is the trainers' job.
 function AssignmentManager({ currentUser }) {
   const dispatch = useDispatch();
+  const [run, busy] = useApiAction();
   const confirm = useConfirm();
   const allCourses = useSelector(selectAllCourses);
   const allClasses = useSelector(selectAllClasses);
   const assignments = useSelector(selectAllAssignments);
   const submissions = useSelector(selectAllSubmissions);
-  const users = useSelector(selectAllUsers);
   const [filter, setFilter] = useState("all");
   const [editor, setEditor] = useState(null); // { editing: row | null }
   const [viewing, setViewing] = useState(null);
@@ -298,12 +360,20 @@ function AssignmentManager({ currentUser }) {
 
   const rows = describeAssignments(assignments, courses, classes);
   const visible = filter === "all" ? rows : rows.filter((r) => r.type === filter);
-  const submissionsFor = (row) => submissions.filter((s) => s.type === "assignment" && s.refId === row.assignment.id);
+  const submissionsFor = (row) => submissions.filter((s) => s.refId === row.assignment.id);
+
+  // Submissions are listed per assignment, and only to the trainer who owns
+  // it — admins can't see them through the API.
+  const ownAssignmentIds = isAdmin ? "" : rows.map((r) => r.assignment.id).join(",");
+  useEffect(() => {
+    ownAssignmentIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchSubmissions({ assignmentId: id })));
+  }, [dispatch, ownAssignmentIds]);
 
   const toggleClosed = (row) => {
     const closed = isAssignmentClosed(row.assignment);
-    dispatch(setAssignmentStatus({ id: row.assignment.id, status: closed ? "open" : "closed" }));
-    dispatch(pushToast({ type: closed ? "success" : "info", message: `Submissions ${closed ? "reopened" : "closed"} for "${row.assignment.title}".` }));
+    return run(setAssignmentStatus({ id: row.assignment.id, status: closed ? "open" : "closed" }), {
+      successMessage: `Submissions ${closed ? "reopened" : "closed"} for "${row.assignment.title}".`,
+    });
   };
 
   const handleDelete = async (row) => {
@@ -314,8 +384,7 @@ function AssignmentManager({ currentUser }) {
       tone: "danger",
     });
     if (!ok) return;
-    dispatch(removeAssignment({ id: row.assignment.id }));
-    dispatch(pushToast({ type: "success", message: "Assignment deleted." }));
+    await run(removeAssignment({ id: row.assignment.id }), { successMessage: "Assignment deleted." });
   };
 
   return (
@@ -379,9 +448,13 @@ function AssignmentManager({ currentUser }) {
                       <StatusPill closed={closed} />
                     </td>
                     <td className="px-4 py-3">
-                      <button onClick={() => setViewing(row)} className="flex items-center gap-1 font-semibold text-brand-700 hover:underline">
-                        <FileCheck2 size={12} /> {count}
-                      </button>
+                      {isAdmin ? (
+                        <span className="text-stone-400">—</span>
+                      ) : (
+                        <button onClick={() => setViewing(row)} className="flex items-center gap-1 font-semibold text-brand-700 hover:underline">
+                          <FileCheck2 size={12} /> {count}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {!isAdmin && (
@@ -394,6 +467,7 @@ function AssignmentManager({ currentUser }) {
                           </button>
                           <button
                             onClick={() => toggleClosed(row)}
+                            disabled={busy}
                             title={closed ? "Reopen submissions" : "Close submissions"}
                             className="rounded-lg border border-stone-200 px-2 py-1.5 text-stone-500 hover:bg-stone-50"
                           >
@@ -418,7 +492,7 @@ function AssignmentManager({ currentUser }) {
       )}
 
       {editor && <AssignmentFormModal courses={courses} classes={classes} editing={editor.editing} onClose={() => setEditor(null)} />}
-      {viewing && <SubmissionsModal row={viewing} submissions={submissionsFor(viewing)} users={users} onClose={() => setViewing(null)} />}
+      {viewing && <SubmissionsModal row={viewing} submissions={submissionsFor(viewing)} onClose={() => setViewing(null)} />}
     </div>
   );
 }

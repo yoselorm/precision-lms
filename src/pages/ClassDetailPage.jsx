@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -12,15 +12,15 @@ import {
   ArrowRight,
   UserPlus,
   BookOpen,
+  Loader2,
 } from "lucide-react";
 import Header from "../components/Header";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
-import { selectClassById, selectClassQuizAttempts, enrollInClass } from "../store/slices/classesSlice";
+import { selectClassById, selectClassesStatus, selectClassQuizAttempts, fetchClass, joinClass } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
-import { selectAllUsers } from "../store/slices/usersSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectEnrollment, enrollUser } from "../store/slices/enrollmentsSlice";
+import { enrollInCourse } from "../store/slices/enrollmentsSlice";
 import { selectAssignmentsByClass } from "../store/slices/assignmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
@@ -84,38 +84,29 @@ function ClassQuizSection({ cls, canManage, isMember }) {
   );
 }
 
-// Averages progress across every course attached to the class — with one
-// course this is identical to reading that course's enrollment directly.
-function RosterRow({ member, courseIds }) {
-  const enrollments = useSelector((state) => courseIds.map((courseId) => selectEnrollment(state, member.id, courseId)));
-  const known = enrollments.filter(Boolean);
-  const avgProgress = known.length ? Math.round(known.reduce((sum, e) => sum + e.progress, 0) / known.length) : 0;
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-stone-100 px-3 py-2.5">
-      <img src={member.avatarUrl} alt={member.name} className="h-8 w-8 rounded-full object-cover" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold text-stone-800">{member.name}</p>
-        <p className="text-[10px] text-stone-400">{member.department}</p>
-      </div>
-      <div className="w-28">
-        <ProgressBar value={avgProgress} heightClass="h-1.5" />
-      </div>
-      <span className="w-10 text-right text-xs font-mono text-stone-500">{avgProgress}%</span>
-    </div>
-  );
-}
-
 export default function ClassDetailPage({ onMenuClick }) {
   const { classId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const cls = useSelector((state) => selectClassById(state, classId));
+  const classesStatus = useSelector(selectClassesStatus);
   const allCourses = useSelector(selectAllCourses);
-  const users = useSelector(selectAllUsers);
   const assignments = useSelector((state) => selectAssignmentsByClass(state, classId));
   const [enrolling, setEnrolling] = useState(false);
+
+  // Detail carries the class's courses and (for members/owner) its quiz.
+  useEffect(() => {
+    dispatch(fetchClass(classId));
+  }, [dispatch, classId]);
+
+  if (!cls && (classesStatus === "idle" || classesStatus === "loading")) {
+    return (
+      <div className="flex h-full flex-1 items-center justify-center gap-2 text-sm text-stone-400">
+        <Loader2 size={16} className="animate-spin" /> Loading class...
+      </div>
+    );
+  }
 
   if (!cls) {
     return (
@@ -128,8 +119,6 @@ export default function ClassDetailPage({ onMenuClick }) {
     );
   }
 
-  const trainer = users.find((u) => u.id === cls.trainerId);
-  const members = users.filter((u) => cls.memberIds.includes(u.id));
   const isMember = cls.memberIds.includes(currentUser.id);
   const canManage = currentUser.role === "admin" || currentUser.id === cls.trainerId;
   const classCourses = cls.courses || [];
@@ -137,10 +126,18 @@ export default function ClassDetailPage({ onMenuClick }) {
   const resolvedCourses = classCourses.map((entry) => ({ ...entry, course: allCourses.find((c) => c.id === entry.courseId) })).filter((e) => e.course);
   const canEnroll = currentUser.role === "learner" && !isMember && cls.status !== "completed";
 
-  const handleEnroll = () => {
+  // Joining the class, then enrolling in each of its courses (the API keeps
+  // class membership and course enrollment separate).
+  const handleEnroll = async () => {
     setEnrolling(true);
-    dispatch(enrollInClass({ classId: cls.id, userId: currentUser.id }));
-    courseIds.forEach((courseId) => dispatch(enrollUser({ userId: currentUser.id, courseId })));
+    const joined = await dispatch(joinClass({ classId: cls.id }));
+    if (joined.error) {
+      setEnrolling(false);
+      dispatch(pushToast({ type: "error", message: joined.payload || "Couldn't join the class." }));
+      return;
+    }
+    await Promise.all(courseIds.map((courseId) => dispatch(enrollInCourse({ courseId }))));
+    dispatch(fetchClass(cls.id));
     dispatch(pushToast({ type: "success", message: `Enrolled in "${cls.title}".` }));
     setEnrolling(false);
   };
@@ -172,10 +169,10 @@ export default function ClassDetailPage({ onMenuClick }) {
                   <CalendarDays size={12} /> {cls.startDate} — {cls.endDate}
                 </span>
                 <span className="flex items-center gap-1">
-                  <GraduationCap size={12} /> {trainer?.name ?? "Unassigned"}
+                  <GraduationCap size={12} /> {cls.trainerName ?? "Unassigned"}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Users size={12} /> {members.length} learners
+                  <Users size={12} /> {cls.memberCount} learner{cls.memberCount === 1 ? "" : "s"}
                 </span>
               </div>
             </div>
@@ -186,7 +183,7 @@ export default function ClassDetailPage({ onMenuClick }) {
                   disabled={enrolling}
                   className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-800 disabled:opacity-60"
                 >
-                  <UserPlus size={13} /> Enroll in this class
+                  {enrolling ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />} Enroll in this class
                 </button>
               )}
               {canManage && (
@@ -220,16 +217,14 @@ export default function ClassDetailPage({ onMenuClick }) {
           )}
         </div>
 
+        {/* The API only exposes a member count, not the roster. */}
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
-          <h3 className="mb-3 flex items-center gap-1.5 text-sm font-bold text-stone-800">
-            <Users size={14} /> Students ({members.length})
+          <h3 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-stone-800">
+            <Users size={14} /> Students ({cls.memberCount})
           </h3>
-          <div className="space-y-1.5">
-            {members.map((m) => (
-              <RosterRow key={m.id} member={m} courseIds={courseIds} />
-            ))}
-            {members.length === 0 && <p className="text-xs text-stone-400">No students enrolled in this class yet.</p>}
-          </div>
+          <p className="text-xs text-stone-400">
+            {cls.memberCount === 0 ? "No students enrolled in this class yet." : "The student roster isn't available yet."}
+          </p>
         </div>
 
         {(canManage || isMember) && (

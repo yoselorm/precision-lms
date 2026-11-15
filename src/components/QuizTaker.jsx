@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckSquare, Square, History, Timer } from "lucide-react";
+import { CheckSquare, Square, History, Timer, Loader2 } from "lucide-react";
 import { sameSet, formatClock } from "../utils/quiz";
 import { QuizResult, QuizReview } from "./QuizPieces";
 import QuizPreview from "./QuizPreview";
 
 // The actual "taking the quiz" experience — questions, live countdown if the
 // quiz has a time limit, grading on submit, a per-question review, and
-// retrying. Lives on its own dedicated page (CourseQuizPage / ClassQuizPage)
+// retrying. Grading happens server-side: `startAttempt()` opens an attempt
+// (resolving to its id, or null on failure) when the quiz starts or is
+// retried, and `submitAttempt(attemptId, answers)` resolves to
+// { score, passed } (or null). The server never says which options were
+// right, so the per-question review only shows when `quiz.answersKnown`. Lives on its own dedicated page (CourseQuizPage / ClassQuizPage)
 // reached only after the student has already seen QuizIntroCard's warning
 // and clicked "Start quiz" — so the timer can safely start the moment this
 // component mounts, and restart on every retry.
@@ -20,12 +24,17 @@ export default function QuizTaker({
   backLabel,
   hasCertificate,
   onViewCertificate,
+  startAttempt,
+  submitAttempt,
 }) {
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [lastResult, setLastResult] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [showAttemptHistory, setShowAttemptHistory] = useState(false);
+  const [attemptId, setAttemptId] = useState(null);
+  const [attemptError, setAttemptError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // The countdown interval closes over quizAnswers at effect-setup time, so
   // a ref keeps grading reading the *latest* picks rather than a stale one.
@@ -55,12 +64,44 @@ export default function QuizTaker({
   // Opened again after the last attempt was already used — nothing to take.
   const locked = outOfAttempts && !quizSubmitted;
 
-  const handleSubmit = (timedOut = false) => {
+  const revealReview = quiz?.answersKnown !== false;
+
+  // Opens a server-side attempt whenever a fresh take begins.
+  useEffect(() => {
+    if (!startAttempt || quizSubmitted || locked) return;
+    let cancelled = false;
+    setAttemptId(null);
+    setAttemptError(null);
+    startAttempt().then((result) => {
+      if (cancelled) return;
+      if (result?.id) setAttemptId(result.id);
+      else setAttemptError(result?.error || "Couldn't start the quiz.");
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizSubmitted, locked]);
+
+  const handleSubmit = async (timedOut = false) => {
+    if (submitting) return;
     const answers = quizAnswersRef.current;
-    const total = quiz.questions.length;
-    const correctCount = quiz.questions.filter((q) => sameSet(answers[q.id] || [], q.correct)).length;
-    const score = total ? Math.round((correctCount / total) * 100) : 0;
-    const passed = score >= quiz.passingScore;
+    let score;
+    let passed;
+    if (submitAttempt) {
+      if (!attemptId) return;
+      setSubmitting(true);
+      const result = await submitAttempt(attemptId, answers);
+      setSubmitting(false);
+      if (!result) return;
+      score = result.score ?? 0;
+      passed = result.passed ?? score >= quiz.passingScore;
+    } else {
+      const total = quiz.questions.length;
+      const correctCount = quiz.questions.filter((q) => sameSet(answers[q.id] || [], q.correct)).length;
+      score = total ? Math.round((correctCount / total) * 100) : 0;
+      passed = score >= quiz.passingScore;
+    }
 
     setLastResult({ score, answersSnapshot: answers });
     setQuizSubmitted(true);
@@ -76,8 +117,9 @@ export default function QuizTaker({
   // and its cleanup fires on unmount — i.e. when the student navigates away
   // from this quiz's own page.
   const timeLimitMins = quiz?.timeLimitMins;
+  const waitingForAttempt = !!startAttempt && !attemptId;
   useEffect(() => {
-    if (quizSubmitted || !timeLimitMins || locked) {
+    if (quizSubmitted || !timeLimitMins || locked || waitingForAttempt) {
       setSecondsLeft(null);
       return;
     }
@@ -86,7 +128,7 @@ export default function QuizTaker({
       setSecondsLeft((prev) => (prev === null ? null : Math.max(0, prev - 1)));
     }, 1000);
     return () => clearInterval(interval);
-  }, [quizSubmitted, timeLimitMins, locked]);
+  }, [quizSubmitted, timeLimitMins, locked, waitingForAttempt]);
 
   useEffect(() => {
     if (secondsLeft === 0 && !quizSubmitted) {
@@ -156,7 +198,7 @@ export default function QuizTaker({
               </button>
             )}
           </div>
-          {revealAnswers && (
+          {revealAnswers && revealReview && (
             <div>
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-stone-400">Correct answers</h3>
               <QuizPreview quiz={quiz} />
@@ -166,6 +208,21 @@ export default function QuizTaker({
       ) : quiz.questions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-400">
           This quiz doesn't have any questions yet.
+        </div>
+      ) : !quizSubmitted && attemptError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-sm text-rose-700">
+          {attemptError}
+          {onBack && (
+            <div>
+              <button onClick={onBack} className="mt-4 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50">
+                {backLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : !quizSubmitted && waitingForAttempt ? (
+        <div className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white p-6 text-sm text-stone-400">
+          <Loader2 size={16} className="animate-spin" /> Starting quiz...
         </div>
       ) : !quizSubmitted ? (
         <div className="animate-fade-in space-y-5">
@@ -206,10 +263,11 @@ export default function QuizTaker({
           })}
           <button
             onClick={() => handleSubmit()}
-            disabled={!quiz.questions.every(isQuestionAnswered)}
-            className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={submitting || !quiz.questions.every(isQuestionAnswered)}
+            className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Submit answers
+            {submitting && <Loader2 size={14} className="animate-spin" />}
+            {submitting ? "Grading..." : "Submit answers"}
           </button>
         </div>
       ) : (
@@ -224,11 +282,13 @@ export default function QuizTaker({
             hasCertificate={hasCertificate}
             onViewCertificate={onViewCertificate}
           />
-          <QuizReview
-            questions={quiz.questions}
-            answers={lastResult?.answersSnapshot ?? {}}
-            revealCorrect={revealAnswers && (hasPassed || outOfAttempts)}
-          />
+          {revealReview && (
+            <QuizReview
+              questions={quiz.questions}
+              answers={lastResult?.answersSnapshot ?? {}}
+              revealCorrect={revealAnswers && (hasPassed || outOfAttempts)}
+            />
+          )}
         </div>
       )}
     </div>

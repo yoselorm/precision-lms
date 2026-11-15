@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import Sidebar from "./components/Sidebar";
 import PublicShell from "./components/PublicShell";
 import LoginPage from "./pages/LoginPage";
@@ -21,6 +21,8 @@ import ClassesCatalog from "./pages/ClassesCatalog";
 import CertificatesPage from "./pages/CertificatesPage";
 import AdminCertificates from "./pages/AdminCertificates";
 import AdminCategories from "./pages/AdminCategories";
+import AdminRoles from "./pages/AdminRoles";
+import AdminAuditLog from "./pages/AdminAuditLog";
 import CertificateDesigner from "./pages/CertificateDesigner";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import ClassMaterialsPage from "./pages/ClassMaterialsPage";
@@ -30,7 +32,8 @@ import ClassQuizPage from "./pages/ClassQuizPage";
 import QuizzesPage from "./pages/QuizzesPage";
 import AssignmentsPage from "./pages/AssignmentsPage";
 import ToastContainer from "./components/ToastContainer";
-import { selectCurrentUser, selectIsAuthenticated } from "./store/slices/authSlice";
+import { selectCurrentUser, selectIsAuthenticated, selectAuthToken, restoreSession } from "./store/slices/authSlice";
+import { loadAppData } from "./store/loadAppData";
 
 function RequireRole({ allowed, children }) {
   const currentUser = useSelector(selectCurrentUser);
@@ -39,8 +42,16 @@ function RequireRole({ allowed, children }) {
 }
 
 function AppShell() {
+  const dispatch = useDispatch();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Everything the signed-in role's pages draw on, fresh from the API —
+  // reloaded whenever the session changes (e.g. starting an admin preview).
+  const token = useSelector(selectAuthToken);
+  useEffect(() => {
+    dispatch(loadAppData());
+  }, [dispatch, token]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-stone-50">
@@ -166,6 +177,22 @@ function AppShell() {
             }
           />
           <Route
+            path="/admin/roles"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <AdminRoles onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/audit-log"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <AdminAuditLog onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/admin/enroll"
             element={
               <RequireRole allowed={["admin"]}>
@@ -202,8 +229,17 @@ function PublicRoutes() {
 }
 
 export default function App() {
+  const dispatch = useDispatch();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const currentUser = useSelector(selectCurrentUser);
+  const token = useSelector(selectAuthToken);
+
+  // Validate a persisted token once on load (and pick up any status change
+  // since last visit); the API client signs the user out if it's expired.
+  useEffect(() => {
+    if (token) dispatch(restoreSession());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!isAuthenticated) {
     return (
@@ -212,6 +248,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin/login" element={<LoginPage portal="admin" />} />
           <Route path="*" element={<PublicRoutes />} />
         </Routes>
       </>
@@ -232,6 +269,7 @@ export default function App() {
       <ToastContainer />
       <Routes>
         <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/admin/login" element={<Navigate to="/" replace />} />
         <Route path="/*" element={<AppShell />} />
       </Routes>
     </>

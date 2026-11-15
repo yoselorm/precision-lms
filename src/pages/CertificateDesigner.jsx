@@ -24,7 +24,8 @@ import {
 import Header from "../components/Header";
 import CertificateCanvas from "../components/CertificateCanvas";
 import CertificateView from "../components/CertificateView";
-import { selectCourseById, setCourseCertificate } from "../store/slices/coursesSlice";
+import { selectCourseById } from "../store/slices/coursesSlice";
+import { selectCertificateForCourse, saveCourseCertificate } from "../store/slices/certificatesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import {
@@ -393,10 +394,19 @@ export default function CertificateDesigner({ onMenuClick }) {
   const { courseId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const course = useSelector((state) => selectCourseById(state, courseId));
+  const baseCourse = useSelector((state) => selectCourseById(state, courseId));
+  const certificate = useSelector((state) => selectCertificateForCourse(state, courseId));
+  const course = baseCourse && certificate ? { ...baseCourse, certificate } : baseCourse;
+  const certificatesStatus = useSelector((state) => state.certificates.status);
   const confirm = useConfirm();
 
-  const [template, setTemplate] = useState(() => (course?.certificate ? structuredClone(getTemplate(course.certificate)) : null));
+  const [template, setTemplate] = useState(() => (certificate ? structuredClone(getTemplate(certificate)) : null));
+  // Certificates may still be loading on first render — seed the editor
+  // once this course's certificate arrives.
+  useEffect(() => {
+    if (!template && certificate) setTemplate(structuredClone(getTemplate(certificate)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certificate]);
   const [selectedId, setSelectedId] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [showFieldNames, setShowFieldNames] = useState(false);
@@ -449,6 +459,10 @@ export default function CertificateDesigner({ onMenuClick }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedId, deleteElement, update]);
 
+  if (!template && (certificatesStatus === "idle" || certificatesStatus === "loading")) {
+    return <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">Loading certificate...</div>;
+  }
+
   if (!course?.certificate || !template) {
     return (
       <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">
@@ -471,8 +485,12 @@ export default function CertificateDesigner({ onMenuClick }) {
         issuer: course.certificate.issuer,
       };
 
-  const save = () => {
-    dispatch(setCourseCertificate({ courseId: course.id, certificate: { template } }));
+  const save = async () => {
+    const result = await dispatch(saveCourseCertificate({ courseId: course.id, certificate: { template } }));
+    if (result.error) {
+      dispatch(pushToast({ type: "error", message: result.payload || "Couldn't save the certificate design." }));
+      return;
+    }
     dispatch(pushToast({ type: "success", message: "Certificate design saved." }));
     setDirty(false);
   };

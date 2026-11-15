@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Check, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
 import Header from "../components/Header";
 import { useConfirm } from "../components/ConfirmDialog";
-import { selectCategories, addCategory, renameCategory, removeCategory } from "../store/slices/categoriesSlice";
+import { selectCategories, selectCategoriesStatus, createCategory, updateCategory, deleteCategory } from "../store/slices/categoriesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
@@ -15,17 +15,19 @@ export default function AdminCategories({ onMenuClick }) {
   const dispatch = useDispatch();
   const confirm = useConfirm();
   const categories = useSelector(selectCategories);
+  const status = useSelector(selectCategoriesStatus);
   const courses = useSelector(selectAllCourses);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [editing, setEditing] = useState(null); // { id, name, description }
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const courseCount = (name) => courses.filter((c) => c.category === name).length;
   const nameTaken = (name, exceptId) =>
     categories.some((c) => c.id !== exceptId && c.name.toLowerCase() === name.trim().toLowerCase());
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault();
     setError("");
     if (!newName.trim() || !newDescription.trim()) return;
@@ -33,13 +35,19 @@ export default function AdminCategories({ onMenuClick }) {
       setError(`"${newName.trim()}" already exists.`);
       return;
     }
-    dispatch(addCategory({ name: newName, description: newDescription }));
-    dispatch(pushToast({ type: "success", message: `Category "${newName.trim()}" added.` }));
+    setSaving(true);
+    const result = await dispatch(createCategory({ name: newName, description: newDescription }));
+    setSaving(false);
+    if (createCategory.rejected.match(result)) {
+      setError(result.payload || "Couldn't add the category.");
+      return;
+    }
+    dispatch(pushToast({ type: "success", message: `Category "${result.payload.name}" added.` }));
     setNewName("");
     setNewDescription("");
   };
 
-  const saveRename = () => {
+  const saveRename = async () => {
     const category = categories.find((c) => c.id === editing.id);
     const name = editing.name.trim();
     if (!name) return;
@@ -47,8 +55,16 @@ export default function AdminCategories({ onMenuClick }) {
       setError(`"${name}" already exists.`);
       return;
     }
-    dispatch(renameCategory({ id: editing.id, name, description: editing.description, previousName: category.name }));
-    dispatch(pushToast({ type: "success", message: `Category "${name}" saved.` }));
+    setSaving(true);
+    const result = await dispatch(
+      updateCategory({ id: editing.id, name, description: editing.description, previousName: category.name })
+    );
+    setSaving(false);
+    if (updateCategory.rejected.match(result)) {
+      dispatch(pushToast({ type: "error", message: result.payload || "Couldn't save the category." }));
+      return;
+    }
+    dispatch(pushToast({ type: "success", message: `Category "${result.payload.name}" saved.` }));
     setEditing(null);
     setError("");
   };
@@ -61,7 +77,11 @@ export default function AdminCategories({ onMenuClick }) {
       tone: "danger",
     });
     if (!ok) return;
-    dispatch(removeCategory({ id: category.id }));
+    const result = await dispatch(deleteCategory({ id: category.id }));
+    if (deleteCategory.rejected.match(result)) {
+      dispatch(pushToast({ type: "error", message: result.payload || "Couldn't delete the category." }));
+      return;
+    }
     dispatch(pushToast({ type: "success", message: `Category "${category.name}" deleted.` }));
   };
 
@@ -101,15 +121,19 @@ export default function AdminCategories({ onMenuClick }) {
           </div>
           <button
             type="submit"
-            disabled={!newName.trim() || !newDescription.trim()}
+            disabled={saving || !newName.trim() || !newDescription.trim()}
             className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Plus size={15} /> Add category
+            {saving && !editing ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add category
           </button>
         </form>
 
         <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-          {categories.length === 0 ? (
+          {status === "loading" && categories.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 p-10 text-sm text-stone-400">
+              <Loader2 size={16} className="animate-spin" /> Loading categories...
+            </div>
+          ) : categories.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-stone-400">
               <Tags size={24} className="text-stone-300" /> No categories yet — add the first one above.
             </div>
@@ -152,7 +176,7 @@ export default function AdminCategories({ onMenuClick }) {
                         <>
                           <button
                             onClick={saveRename}
-                            disabled={!editing.name.trim()}
+                            disabled={saving || !editing.name.trim()}
                             title="Save"
                             className="rounded-lg bg-brand-700 p-2 text-white hover:bg-brand-800 disabled:opacity-50"
                           >

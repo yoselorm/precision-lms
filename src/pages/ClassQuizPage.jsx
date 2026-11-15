@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft } from "lucide-react";
 import Header from "../components/Header";
 import QuizTaker from "../components/QuizTaker";
-import { selectClassById, selectClassQuizAttempts, submitClassQuizAttempt } from "../store/slices/classesSlice";
+import { selectClassById, selectClassQuizAttempts, submitClassQuizAttempt, fetchClass } from "../store/slices/classesSlice";
+import { quizAttemptHandlers } from "../utils/quizAttempts";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
 
@@ -18,6 +19,17 @@ export default function ClassQuizPage({ onMenuClick }) {
   const cls = useSelector((state) => selectClassById(state, classId));
   const currentUser = useSelector(selectCurrentUser);
   const attempts = useSelector((state) => (currentUser ? selectClassQuizAttempts(state, classId, currentUser.id) : []));
+  const quiz = cls?.quiz;
+
+  // The class detail fetch is what loads its quiz.
+  useEffect(() => {
+    dispatch(fetchClass(classId));
+  }, [dispatch, classId]);
+
+  const handlers = useMemo(
+    () => quiz && quizAttemptHandlers({ classId }, quiz, (message) => dispatch(pushToast({ type: "error", message }))),
+    [quiz, classId, dispatch]
+  );
 
   if (!cls || !currentUser) {
     return (
@@ -46,7 +58,7 @@ export default function ClassQuizPage({ onMenuClick }) {
 
   const handleSubmit = (score, passed) => {
     const wasLastAttempt = !!cls.quiz.maxAttempts && attempts.length + 1 >= cls.quiz.maxAttempts;
-    dispatch(submitClassQuizAttempt({ classId: cls.id, userId: currentUser.id, score, passingScore: cls.quiz.passingScore }));
+    dispatch(submitClassQuizAttempt({ classId: cls.id, userId: currentUser.id, score, passingScore: cls.quiz.passingScore, passed }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",
@@ -73,6 +85,7 @@ export default function ClassQuizPage({ onMenuClick }) {
           onSubmit={handleSubmit}
           onBack={() => navigate(`/classes/${classId}`)}
           backLabel="Back to class"
+          {...handlers}
         />
       </div>
     </div>
