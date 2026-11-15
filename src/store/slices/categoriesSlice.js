@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import * as categoriesApi from "../../api/categories";
 import { logout } from "./authSlice";
+import { listThunk } from "../apiThunk";
 
 const initialState = {
   categories: [],
@@ -21,7 +22,7 @@ const apiThunk = (type, fn) =>
     }
   });
 
-export const fetchCategories = apiThunk("categories/fetch", (_, { getState }) =>
+export const fetchCategories = listThunk("categories/fetch", (_, { getState }) =>
   categoriesApi.listCategories(getState().auth.guard)
 );
 

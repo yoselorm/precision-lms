@@ -10,6 +10,8 @@ import { useApiAction } from "../hooks/useApiAction";
 import { selectAllUsers, selectApprovedTrainers } from "../store/slices/usersSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadAdminCourses } from "../store/loadAppData";
 
 const STATUS_PILL = {
   draft: "bg-blue-50 text-blue-700 border-blue-200",
@@ -136,6 +138,7 @@ function AssignTrainerModal({ course, onClose }) {
 }
 
 export default function AdminCourses({ onMenuClick }) {
+  usePageData(loadAdminCourses);
   const navigate = useNavigate();
   const [run, busy] = useApiAction();
   const courses = useSelector(selectAllCourses);

@@ -10,6 +10,8 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
 import { selectDashboardStats } from "../store/slices/dashboardSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadDashboard } from "../store/loadAppData";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -26,6 +28,7 @@ function StatCard({ icon: Icon, label, value, accent }) {
 }
 
 export default function LearnerDashboard({ onMenuClick }) {
+  usePageData(loadDashboard);
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
   const courses = useSelector(selectAllCourses);

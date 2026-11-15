@@ -5,9 +5,12 @@ import { CalendarDays, GraduationCap, Users, Eye } from "lucide-react";
 import Header from "../components/Header";
 import { selectAllClasses, selectClassesStatus } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadClasses } from "../store/loadAppData";
 
 // Classes are created and run by trainers — admins oversee them here.
 export default function AdminClasses({ onMenuClick }) {
+  usePageData(loadClasses);
   const navigate = useNavigate();
   const classes = useSelector(selectAllClasses);
   const status = useSelector(selectClassesStatus);

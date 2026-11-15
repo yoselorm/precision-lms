@@ -5,12 +5,15 @@ import Header from "../components/Header";
 import { selectPublicCourses } from "../store/slices/coursesSlice";
 import { selectLearners } from "../store/slices/usersSlice";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadEnrollPage } from "../store/loadAppData";
 
 // The API only lets learners enroll themselves (POST /user/enrollments), so
 // admin enrollment is shown but disabled until an admin endpoint exists.
 const ADMIN_ENROLL_SUPPORTED = false;
 
 export default function AdminEnroll({ onMenuClick }) {
+  usePageData(loadEnrollPage);
   const courses = useSelector(selectPublicCourses);
   const learners = useSelector(selectLearners);
   const enrollments = useSelector(selectAllEnrollments);

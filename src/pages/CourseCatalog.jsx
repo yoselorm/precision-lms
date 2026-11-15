@@ -1,19 +1,24 @@
 import React, { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { useSearchParams } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import Header from "../components/Header";
 import CourseCard from "../components/CourseCard";
-import { selectPublicCourses } from "../store/slices/coursesSlice";
+import { selectPublicCourses, selectCoursesStatus } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadPublicCourses } from "../store/loadAppData";
 
 export default function CourseCatalog({ onMenuClick }) {
+  usePageData(loadPublicCourses, { publicPage: true });
   // Only approved courses are ever shown here — this is the catalog the
   // public and every learner sees, so trainer submissions awaiting review
   // stay invisible until an admin approves them.
   const courses = useSelector(selectPublicCourses);
+  const status = useSelector(selectCoursesStatus);
   const currentUser = useSelector(selectCurrentUser);
+
   const enrollments = useSelector((state) => (currentUser ? selectEnrollmentsByUser(state, currentUser.id) : []));
   const enrollmentByCourseId = Object.fromEntries(enrollments.map((e) => [e.courseId, e]));
 
@@ -72,7 +77,17 @@ export default function CourseCatalog({ onMenuClick }) {
           ))}
         </div>
 
-        {filtered.length === 0 && <p className="text-center text-sm text-stone-400">No courses match your search.</p>}
+        {(status === "idle" || status === "loading") && courses.length === 0 ? (
+          <p className="flex items-center justify-center gap-2 text-sm text-stone-400">
+            <Loader2 size={16} className="animate-spin" /> Loading courses...
+          </p>
+        ) : (
+          filtered.length === 0 && (
+            <p className="text-center text-sm text-stone-400">
+              {courses.length === 0 ? "No courses have been published yet." : "No courses match your search."}
+            </p>
+          )
+        )}
       </div>
     </div>
   );

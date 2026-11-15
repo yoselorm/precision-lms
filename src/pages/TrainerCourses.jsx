@@ -8,6 +8,8 @@ import { selectCoursesByCreator, deleteCourse } from "../store/slices/coursesSli
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import { selectCurrentUser } from "../store/slices/authSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadCourses } from "../store/loadAppData";
 
 const STATUS_META = {
   draft: { pill: "bg-blue-50 text-blue-700 border-blue-200", icon: PencilLine, label: "Draft" },
@@ -39,6 +41,7 @@ export async function confirmDeleteCourse({ confirm, dispatch, course }) {
 }
 
 export default function TrainerCourses({ onMenuClick }) {
+  usePageData(loadCourses);
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const confirm = useConfirm();

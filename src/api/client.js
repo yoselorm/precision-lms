@@ -74,10 +74,10 @@ export function toQuery(params = {}) {
 
 // Walks every page of a paginated list endpoint (100 per page, the API max).
 // Non-paginated endpoints just return their array on the first call.
-export async function fetchAllPages(path, params = {}) {
+export async function fetchAllPages(path, params = {}, { auth = true } = {}) {
   const items = [];
   for (let page = 1; ; page++) {
-    const json = await apiRequest(`${path}${toQuery({ ...params, limit: 100, page })}`, { raw: true });
+    const json = await apiRequest(`${path}${toQuery({ ...params, limit: 100, page })}`, { raw: true, auth });
     items.push(...(json?.data || []));
     const meta = json?.meta;
     if (!meta || meta.current_page >= meta.last_page) return items;

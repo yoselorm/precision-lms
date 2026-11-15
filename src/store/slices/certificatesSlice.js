@@ -1,7 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
 import { normalizeCertificate, templateToApi } from "../../api/normalize";
-import { apiThunk } from "../apiThunk";
+import { apiThunk, listThunk } from "../apiThunk";
 import { logout } from "./authSlice";
 
 const initialState = {
@@ -10,7 +10,7 @@ const initialState = {
   status: "idle",
 };
 
-export const fetchCertificates = apiThunk("certificates/fetch", () => api.listCertificates());
+export const fetchCertificates = listThunk("certificates/fetch", () => api.listCertificates());
 
 const certificateToApi = ({ courseId, title, issuer, signatoryName, signatoryTitle, template }) => ({
   course_id: courseId || null,

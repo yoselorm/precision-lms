@@ -6,8 +6,11 @@ import CertificateView from "../components/CertificateView";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectCertificatesByUser } from "../store/slices/enrollmentsSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadMyLearning } from "../store/loadAppData";
 
 export default function CertificatesPage({ onMenuClick }) {
+  usePageData(loadMyLearning);
   const currentUser = useSelector(selectCurrentUser);
   const courses = useSelector(selectAllCourses);
   const completedEnrollments = useSelector((state) => selectCertificatesByUser(state, currentUser.id));

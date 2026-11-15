@@ -1,7 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
 import { normalizeAssignment } from "../../api/normalize";
-import { apiThunk, guardOf, roleOf } from "../apiThunk";
+import { apiThunk, listThunk, guardOf, roleOf } from "../apiThunk";
 import { deleteCourse } from "./coursesSlice";
 import { logout } from "./authSlice";
 
@@ -14,7 +14,7 @@ const initialState = {
 // course, so we ask for each class/course they're involved with: a
 // trainer's own classes and courses, a learner's joined classes and
 // enrolled courses. Load classes, courses and enrollments first.
-export const fetchAssignments = apiThunk("assignments/fetch", async (_, { getState }) => {
+export const fetchAssignments = listThunk("assignments/fetch", async (_, { getState }) => {
   if (guardOf(getState) === "admin") return api.listAllAssignments();
   const state = getState();
   const userId = state.auth.currentUser?.id;

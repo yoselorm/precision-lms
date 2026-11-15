@@ -40,6 +40,8 @@ import {
   formatCertificateDate,
 } from "../utils/certificateTemplate";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadCertificates } from "../store/loadAppData";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-2.5 py-1.5 text-xs outline-none focus:border-brand-600";
 
@@ -391,6 +393,7 @@ function BackgroundPanel({ background, onChange, onReset }) {
 }
 
 export default function CertificateDesigner({ onMenuClick }) {
+  usePageData(loadCertificates);
   const { courseId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();

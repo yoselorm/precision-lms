@@ -19,6 +19,8 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { confirmDeleteCourse, canDeleteCourse } from "./TrainerCourses";
 import { useConfirm } from "../components/ConfirmDialog";
+import { usePageData } from "../hooks/usePageData";
+import { loadCourses } from "../store/loadAppData";
 
 // What a course (or an update to a live one) needs before it can go to an
 // admin for approval.
@@ -187,6 +189,7 @@ function DraftChecklist({ course, onSaveDraft, onSubmit, onDelete, busy }) {
 // lesson/quiz editing surface, just a different back link and ownership
 // check depending on who's looking.
 export default function CourseManagePage({ onMenuClick }) {
+  usePageData(loadCourses);
   const { courseId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();

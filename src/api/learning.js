@@ -168,3 +168,10 @@ export function deleteCertificate(id) {
 export function getDashboard(guard) {
   return apiRequest(`${base(guard)}/dashboard`);
 }
+
+// ── Certificate verification (public) ──
+// Resolves to { verification_code, issued_at, pdf_url, learner_name,
+// course_title, certificate_title, issuer }; 404 when no certificate matches.
+export function verifyCertificate(code) {
+  return apiRequest(`/v1/certificates/verify/${encodeURIComponent(code)}`, { auth: false });
+}

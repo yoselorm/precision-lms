@@ -23,6 +23,8 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { enrollInCourse } from "../store/slices/enrollmentsSlice";
 import { selectAssignmentsByClass } from "../store/slices/assignmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadClasses } from "../store/loadAppData";
 
 const STATUS_STYLES = {
   active: "bg-emerald-50 text-emerald-800 border-emerald-200",
@@ -85,6 +87,7 @@ function ClassQuizSection({ cls, canManage, isMember }) {
 }
 
 export default function ClassDetailPage({ onMenuClick }) {
+  usePageData(loadClasses);
   const { classId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();

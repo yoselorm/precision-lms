@@ -12,6 +12,26 @@ export const apiThunk = (type, fn) =>
     }
   });
 
+// For argument-less list fetches that several places ask for (app startup
+// and each page that shows the list): while one request is in flight, later
+// dispatches share it instead of firing a duplicate, and resolve when it
+// does — so callers can still `await` fresh data. Exposes the same
+// pending/fulfilled/rejected action creators as a normal thunk.
+export const listThunk = (type, fn) => {
+  const thunk = apiThunk(type, fn);
+  let inFlight = null;
+  const shared = () => (dispatch) => {
+    if (!inFlight) inFlight = dispatch(thunk()).finally(() => (inFlight = null));
+    return inFlight;
+  };
+  return Object.assign(shared, {
+    pending: thunk.pending,
+    fulfilled: thunk.fulfilled,
+    rejected: thunk.rejected,
+    typePrefix: thunk.typePrefix,
+  });
+};
+
 // Current guard ("admin" | "user") from the auth slice — decides which side
 // of the API a call goes to.
 export const guardOf = (getState) => getState().auth.guard;

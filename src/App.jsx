@@ -23,6 +23,7 @@ import AdminCertificates from "./pages/AdminCertificates";
 import AdminCategories from "./pages/AdminCategories";
 import AdminRoles from "./pages/AdminRoles";
 import AdminAuditLog from "./pages/AdminAuditLog";
+import VerifyCertificatePage from "./pages/VerifyCertificatePage";
 import CertificateDesigner from "./pages/CertificateDesigner";
 import TrainerDashboard from "./pages/TrainerDashboard";
 import ClassMaterialsPage from "./pages/ClassMaterialsPage";
@@ -65,6 +66,8 @@ function AppShell() {
         <Routes>
           <Route path="/" element={<HomeWithMenu onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/catalog" element={<CourseCatalog onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/verify" element={<VerifyCertificatePage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/verify/:code" element={<VerifyCertificatePage onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId" element={<CoursePlayer onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId/topic/:topicId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route
@@ -221,6 +224,8 @@ function PublicRoutes() {
     <PublicShell>
       <Routes>
         <Route path="/catalog" element={<CourseCatalog />} />
+        <Route path="/verify" element={<VerifyCertificatePage />} />
+        <Route path="/verify/:code" element={<VerifyCertificatePage />} />
         <Route path="/course/:courseId" element={<CoursePlayer />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

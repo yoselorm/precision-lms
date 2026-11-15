@@ -7,6 +7,8 @@ import ProgressBar from "../components/ProgressBar";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllClasses } from "../store/slices/classesSlice";
 import { selectDashboardStats } from "../store/slices/dashboardSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadDashboard } from "../store/loadAppData";
 
 function StatCard({ icon: Icon, label, value, accent }) {
   return (
@@ -25,6 +27,7 @@ function StatCard({ icon: Icon, label, value, accent }) {
 // Platform-wide numbers come from GET /admin/dashboard; the class and
 // review lists come from the loaded classes/courses.
 export default function AdminDashboard({ onMenuClick }) {
+  usePageData(loadDashboard);
   const navigate = useNavigate();
   const stats = useSelector(selectDashboardStats);
   const courses = useSelector(selectAllCourses);

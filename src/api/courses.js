@@ -10,6 +10,11 @@ export function listCourses(guard, { mine } = {}) {
   return fetchAllPages(`${base(guard)}/courses`, guard === "admin" ? {} : { mine: mine ? 1 : undefined });
 }
 
+// The public catalog — approved courses only, no sign-in needed.
+export function listPublicCourses() {
+  return fetchAllPages("/v1/courses", {}, { auth: false });
+}
+
 export function getCourse(guard, id) {
   return apiRequest(`${base(guard)}/courses/${id}`);
 }
@@ -72,6 +77,17 @@ export function getTopicQuiz(topicId) {
 }
 
 // Full replace — the backend deletes any existing quiz first.
+// Admin: every quiz in the system (topic and class quizzes), with answers.
+// Each names its owner only by type + id. Loading several courses at once
+// would each ask for this list, so concurrent calls share one request.
+let adminQuizzesInFlight = null;
+export function listAdminQuizzes() {
+  if (!adminQuizzesInFlight) {
+    adminQuizzesInFlight = apiRequest("/v1/admin/quizzes").finally(() => (adminQuizzesInFlight = null));
+  }
+  return adminQuizzesInFlight;
+}
+
 export function saveTopicQuiz(guard, topicId, body) {
   return apiRequest(`${base(guard)}/topics/${topicId}/quiz`, { method: "PUT", body });
 }

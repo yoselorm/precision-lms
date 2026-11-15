@@ -7,6 +7,8 @@ import ClassFormModal from "../components/ClassFormModal";
 import { selectAllClasses, selectClassesStatus } from "../store/slices/classesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadClasses } from "../store/loadAppData";
 
 const STATUS_STYLES = {
   active: "bg-emerald-50 text-emerald-800 border-emerald-200",
@@ -27,6 +29,7 @@ const EMPTY_MESSAGE = {
 };
 
 export default function ClassesCatalog({ onMenuClick }) {
+  usePageData(loadClasses);
   const navigate = useNavigate();
   const allClasses = useSelector(selectAllClasses);
   const courses = useSelector(selectAllCourses);

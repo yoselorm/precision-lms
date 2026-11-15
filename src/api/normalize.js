@@ -77,6 +77,60 @@ export function normalizeTopic(t) {
 
 const lessonMinutes = (topics) => topics.reduce((sum, t) => sum + t.lessons.reduce((s, l) => s + (l.durationMins || 0), 0), 0);
 
+// Courses without an uploaded thumbnail get a generated cover: a gradient in
+// the course's colour (or one picked from the brand palette by id) with a
+// soft pattern, the category and the title. It's an inline SVG, so every
+// <img src={course.thumbnailImage}> renders it with no extra request.
+const COVER_PALETTE = ["#21409A", "#0f766e", "#7c3aed", "#b45309", "#be123c", "#0369a1", "#15803d"];
+const COVER_PREFIX = "data:image/svg+xml;utf8,";
+const COVER_MARKER = "lms-generated-cover";
+
+const escapeXml = (text) => String(text).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[ch]);
+
+// Darkens a #rrggbb colour by `amount` (0–1) for the gradient's far end.
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const channel = (shift) => Math.max(0, Math.round(((n >> shift) & 255) * (1 - amount)));
+  return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// Splits a title into at most two lines of ~22 characters, with an ellipsis
+// if it runs longer.
+function titleLines(title, max = 22) {
+  const lines = [""];
+  for (const word of String(title).split(/\s+/)) {
+    const current = lines[lines.length - 1];
+    if (!current || (current + " " + word).length <= max) lines[lines.length - 1] = current ? `${current} ${word}` : word;
+    else if (lines.length < 2) lines.push(word);
+    else {
+      lines[1] = `${lines[1].slice(0, max - 1).trimEnd()}…`;
+      break;
+    }
+  }
+  return lines.map((line) => (line.length > max + 2 ? `${line.slice(0, max)}…` : line));
+}
+
+export function generatedCover({ id, title, category, color }) {
+  const hash = [...String(id)].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const base = /^#[0-9a-f]{6}$/i.test(color || "") ? color : COVER_PALETTE[hash % COVER_PALETTE.length];
+  const lines = titleLines(title);
+  const titleY = lines.length === 1 ? 214 : 190;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" data-${COVER_MARKER}="1">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${base}"/><stop offset="1" stop-color="${shade(base, 0.45)}"/></linearGradient>
+<pattern id="p" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><line x1="0" y1="0" x2="0" y2="22" stroke="#fff" stroke-opacity="0.07" stroke-width="8"/></pattern></defs>
+<rect width="480" height="300" fill="url(#g)"/><rect width="480" height="300" fill="url(#p)"/>
+<circle cx="420" cy="40" r="110" fill="#fff" fill-opacity="0.08"/><circle cx="455" cy="250" r="60" fill="none" stroke="#fff" stroke-opacity="0.18" stroke-width="10"/>
+<rect x="32" y="36" width="${Math.min(320, 30 + String(category).length * 9.5)}" height="28" rx="14" fill="#fff" fill-opacity="0.18"/>
+<text x="46" y="55" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="700" fill="#fff" letter-spacing="0.5">${escapeXml(String(category).toUpperCase())}</text>
+${lines
+  .map((line, i) => `<text x="32" y="${titleY + i * 40}" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="800" fill="#fff">${escapeXml(line)}</text>`)
+  .join("")}
+</svg>`;
+  return `${COVER_PREFIX}${encodeURIComponent(svg)}`;
+}
+
+export const isPlaceholderThumbnail = (url) => !url || (url.startsWith(COVER_PREFIX) && url.includes(COVER_MARKER));
+
 // AdminCourseResource / UserCourseResource. Topics, revision and certificate
 // are loaded separately and merged in by the courses slice.
 export function normalizeCourse(c) {
@@ -87,7 +141,9 @@ export function normalizeCourse(c) {
     categoryId: c.category?.id || null,
     durationMins: c.duration_mins || 0,
     thumbnailColor: c.thumbnail_color || "#0f766e",
-    thumbnailImage: c.thumbnail_image || `https://picsum.photos/seed/${c.id}/480/300`,
+    thumbnailImage:
+      c.thumbnail_image ||
+      generatedCover({ id: c.id, title: c.title, category: c.category?.name || "Course", color: c.thumbnail_color }),
     demoVideoUrl: c.demo_video_url || "",
     // Not returned by the API yet.
     studentsCount: 0,
@@ -249,6 +305,7 @@ export function normalizeAssignment(a) {
     createdBy: a.created_by || null,
     status: a.status,
     autoCloseOnDueDate: !!a.auto_close_on_due_date,
+    submissionsCount: a.submissions_count ?? null,
   };
 }
 

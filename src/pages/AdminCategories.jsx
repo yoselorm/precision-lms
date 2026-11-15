@@ -6,12 +6,15 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { selectCategories, selectCategoriesStatus, createCategory, updateCategory, deleteCategory } from "../store/slices/categoriesSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { pushToast } from "../store/slices/uiSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadCategories } from "../store/loadAppData";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
 // Admin-managed list of course categories. Trainers (and admins) pick from
 // it when adding a course; renaming one updates every course that uses it.
 export default function AdminCategories({ onMenuClick }) {
+  usePageData(loadCategories);
   const dispatch = useDispatch();
   const confirm = useConfirm();
   const categories = useSelector(selectCategories);

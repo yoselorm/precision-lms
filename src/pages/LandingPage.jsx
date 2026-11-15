@@ -24,8 +24,9 @@ import {
 import CourseCard from "../components/CourseCard";
 import { selectPublicCourses } from "../store/slices/coursesSlice";
 import { selectCategories } from "../store/slices/categoriesSlice";
-import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import afenetLogo from "../assets/images/afenet-logo.jpeg";
+import { usePageData } from "../hooks/usePageData";
+import { loadPublicCourses } from "../store/loadAppData";
 
 const photo = (id, w = 800) => `https://images.unsplash.com/photo-${id}?w=${w}&q=80&auto=format&fit=crop`;
 
@@ -130,13 +131,16 @@ function CurlyArrow({ className }) {
 }
 
 export default function LandingPage() {
+  usePageData(loadPublicCourses, { publicPage: true });
   const navigate = useNavigate();
   const categoryRowRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const courses = useSelector(selectPublicCourses);
   const categoryList = useSelector(selectCategories);
-  const trainers = useSelector(selectApprovedTrainers);
+  // Visitors can't list users, so count trainers as the distinct authors of
+  // published courses.
+  const trainerCount = useMemo(() => new Set(courses.map((c) => c.createdBy).filter(Boolean)).size, [courses]);
 
   const categories = useMemo(() => {
     const counts = {};
@@ -153,11 +157,15 @@ export default function LandingPage() {
 
   const learnerCount = courses.reduce((sum, c) => sum + (c.studentsCount || 0), 0);
 
+  // Enrollment counts aren't public yet — show free courses until they are.
+  const freeCount = courses.filter((c) => !c.price).length;
   const stats = [
-    { icon: Users, value: `${learnerCount.toLocaleString()}+`, label: "Learners enrolled" },
+    learnerCount > 0
+      ? { icon: Users, value: `${learnerCount.toLocaleString()}+`, label: "Learners enrolled" }
+      : { icon: Users, value: freeCount, label: "Free courses" },
     { icon: BookOpen, value: courses.length, label: "Courses available" },
     { icon: Layers, value: categories.length, label: "Learning categories" },
-    { icon: GraduationCap, value: trainers.length, label: "Expert trainers" },
+    { icon: GraduationCap, value: trainerCount, label: "Expert trainers" },
   ];
 
   const goCatalog = () => navigate("/catalog");
@@ -190,7 +198,7 @@ export default function LandingPage() {
               <span className="hidden text-sm font-bold tracking-tight text-stone-900 sm:inline">Afenet LMS</span>
             </button>
 
-            <div className="hidden items-center gap-7 md:flex lg:mr-auto lg:ml-12">
+            <div className="hidden items-center gap-5 whitespace-nowrap lg:mr-auto lg:ml-10 lg:flex xl:gap-7">
               {NAV_LINKS.map((l) => (
                 <button
                   key={l.target}
@@ -203,9 +211,12 @@ export default function LandingPage() {
               <button onClick={goCatalog} className="text-sm font-medium text-stone-600 transition hover:text-brand-700">
                 Courses
               </button>
+              <button onClick={() => navigate("/verify")} className="text-sm font-medium text-stone-600 transition hover:text-brand-700">
+                Verify certificate
+              </button>
             </div>
 
-            <div className="hidden items-center gap-3 md:flex">
+            <div className="hidden items-center gap-3 whitespace-nowrap lg:flex">
               <button
                 onClick={() => navigate("/login")}
                 className="rounded-lg border border-brand-700 px-5 py-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-100 lg:border-white/50 lg:text-white lg:hover:bg-white/10"
@@ -222,7 +233,7 @@ export default function LandingPage() {
 
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className="rounded-lg p-2 text-stone-700 hover:bg-brand-100 md:hidden"
+              className="rounded-lg p-2 text-stone-700 hover:bg-brand-100 lg:hidden"
               aria-label="Toggle menu"
             >
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -230,7 +241,7 @@ export default function LandingPage() {
           </nav>
 
           {menuOpen && (
-            <div className="mb-4 animate-fade-in rounded-2xl border border-brand-100 bg-white p-3 shadow-lg md:hidden">
+            <div className="mb-4 animate-fade-in rounded-2xl border border-brand-100 bg-white p-3 shadow-lg lg:hidden">
               {NAV_LINKS.map((l) => (
                 <button
                   key={l.target}
@@ -245,6 +256,12 @@ export default function LandingPage() {
                 className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-brand-50"
               >
                 Courses
+              </button>
+              <button
+                onClick={() => navigate("/verify")}
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-stone-700 hover:bg-brand-50"
+              >
+                Verify a certificate
               </button>
               <div className="mt-2 grid grid-cols-2 gap-2 border-t border-stone-100 pt-3">
                 <button
@@ -304,8 +321,10 @@ export default function LandingPage() {
                   ))}
                 </div>
                 <p className="text-sm leading-tight text-stone-700">
-                  <span className="block text-base font-bold text-stone-900">{learnerCount.toLocaleString()}+ Active</span>
-                  Learners
+                  <span className="block text-base font-bold text-stone-900">
+                    {learnerCount > 0 ? `${learnerCount.toLocaleString()}+ Active` : "Join learners"}
+                  </span>
+                  {learnerCount > 0 ? "Learners" : "across Africa"}
                 </p>
               </div>
             </div>
@@ -551,6 +570,9 @@ export default function LandingPage() {
             ))}
             <button onClick={goCatalog} className="hover:text-brand-700">
               Courses
+            </button>
+            <button onClick={() => navigate("/verify")} className="hover:text-brand-700">
+              Verify a certificate
             </button>
           </div>
           <p className="text-xs text-stone-400">© {new Date().getFullYear()} African Field Epidemiology Network</p>

@@ -52,8 +52,7 @@ export default function CourseTopicsManager({ course, readOnly = false, useRevis
 
       {topics.map((topic) => {
         const quizQuestionCount = topic.quiz?.questions?.length ?? 0;
-        // Admins can't read quizzes from the API, so don't claim "no quiz".
-        const quizLabel = readOnly ? "quiz details unavailable" : quizQuestionCount ? `quiz: ${quizQuestionCount} questions` : "no quiz";
+        const quizLabel = quizQuestionCount ? `quiz: ${quizQuestionCount} questions` : "no quiz";
         return (
           <div key={topic.id} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
             <div className="flex items-start justify-between gap-2">

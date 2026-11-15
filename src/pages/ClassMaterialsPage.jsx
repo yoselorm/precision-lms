@@ -11,6 +11,8 @@ import { selectCategories } from "../store/slices/categoriesSlice";
 import { useApiAction } from "../hooks/useApiAction";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadClasses } from "../store/loadAppData";
 
 const fieldClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -324,6 +326,7 @@ function ClassCourseCard({ cls, entry }) {
 }
 
 export default function ClassMaterialsPage({ onMenuClick }) {
+  usePageData(loadClasses);
   const { classId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();

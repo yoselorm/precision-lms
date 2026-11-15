@@ -12,6 +12,7 @@ import { selectApprovedTrainers } from "../store/slices/usersSlice";
 import { selectCategories } from "../store/slices/categoriesSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { htmlToText } from "../utils/richText";
+import { isPlaceholderThumbnail } from "../api/normalize";
 import ModalOverlay from "./ModalOverlay";
 
 const inputClass = "w-full rounded-lg border px-3.5 py-2.5 text-sm outline-none focus:border-brand-600";
@@ -49,7 +50,8 @@ export default function CourseFormModal({ onClose, onCreated, editing }) {
           pricing: editing.price > 0 ? "paid" : "free",
           price: editing.price > 0 ? String(editing.price) : "",
           description: editing.description,
-          thumbnailImage: editing.thumbnailImage,
+          // Don't treat the display placeholder as a chosen image.
+          thumbnailImage: isPlaceholderThumbnail(editing.thumbnailImage) ? "" : editing.thumbnailImage,
           demoVideoUrl: editing.demoVideoUrl,
         }
       : {

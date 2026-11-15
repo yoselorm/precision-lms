@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
-import { apiThunk, guardOf } from "../apiThunk";
+import { apiThunk, listThunk, guardOf } from "../apiThunk";
 import { logout } from "./authSlice";
 
 const initialState = {
@@ -10,7 +10,7 @@ const initialState = {
   status: "idle",
 };
 
-export const fetchDashboard = apiThunk("dashboard/fetch", (_, { getState }) => api.getDashboard(guardOf(getState)));
+export const fetchDashboard = listThunk("dashboard/fetch", (_, { getState }) => api.getDashboard(guardOf(getState)));
 
 const dashboardSlice = createSlice({
   name: "dashboard",

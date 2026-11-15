@@ -11,6 +11,8 @@ import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadCertificates } from "../store/loadAppData";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -119,6 +121,7 @@ function CertificateFormModal({ courses, editing, onClose }) {
 }
 
 export default function AdminCertificates({ onMenuClick }) {
+  usePageData(loadCertificates);
   const [run] = useApiAction();
   const confirm = useConfirm();
   const navigate = useNavigate();

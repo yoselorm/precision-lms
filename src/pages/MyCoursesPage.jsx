@@ -7,8 +7,11 @@ import CourseCard from "../components/CourseCard";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadMyLearning } from "../store/loadAppData";
 
 export default function MyCoursesPage({ onMenuClick }) {
+  usePageData(loadMyLearning);
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
   const courses = useSelector(selectAllCourses);

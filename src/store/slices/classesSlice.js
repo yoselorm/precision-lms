@@ -2,8 +2,8 @@ import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
 import { ApiError } from "../../api/client";
 import { normalizeClass, normalizeQuiz, quizToApi } from "../../api/normalize";
-import { apiThunk, guardOf } from "../apiThunk";
-import { upsertCourses } from "./coursesSlice";
+import { apiThunk, listThunk, guardOf } from "../apiThunk";
+import { upsertCourses, fetchAdminQuizzes, isClassQuiz } from "./coursesSlice";
 import { logout } from "./authSlice";
 
 export const initialState = {
@@ -17,7 +17,7 @@ export const initialState = {
   classQuizAttempts: [],
 };
 
-export const fetchClasses = apiThunk("classes/fetch", (_, { getState }) => api.listClasses(guardOf(getState)));
+export const fetchClasses = listThunk("classes/fetch", (_, { getState }) => api.listClasses(guardOf(getState)));
 
 // Detail includes the class's courses (the list doesn't), and for members
 // its quiz. Embedded courses are merged into the courses list.
@@ -137,6 +137,12 @@ const classesSlice = createSlice({
         const ids = state.joinedIds[userId] || [];
         if (!ids.includes(cls.id)) state.joinedIds[userId] = [...ids, cls.id];
         upsert(state, cls);
+      })
+      .addCase(fetchAdminQuizzes.fulfilled, (state, action) => {
+        const byClass = new Map(action.payload.filter(isClassQuiz).map((q) => [q.owner_id, q]));
+        state.classes.forEach((cls) => {
+          cls.quiz = normalizeQuiz(byClass.get(cls.id));
+        });
       })
       // Keep joinedIds across logins — it's per user and can't be refetched.
       .addCase(logout, (state) => ({ ...initialState, joinedIds: state.joinedIds }));

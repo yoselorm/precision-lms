@@ -6,13 +6,15 @@ import Header from "../components/Header";
 import QuizBuilder from "../components/QuizBuilder";
 import QuizPreview from "../components/QuizPreview";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectAllCourses, saveTopicQuiz, removeTopicQuiz, editableTopicsOf, fetchCourseContent } from "../store/slices/coursesSlice";
+import { selectAllCourses, saveTopicQuiz, removeTopicQuiz, editableTopicsOf, fetchCourseContent, fetchAdminQuizzes } from "../store/slices/coursesSlice";
 import { selectAllClasses, setClassQuiz, removeClassQuiz, fetchClass } from "../store/slices/classesSlice";
 import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadQuizzes } from "../store/loadAppData";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -361,15 +363,16 @@ function QuizManager({ currentUser }) {
     [isAdmin, allCourses, currentUser.id]
   );
 
-  // Quizzes live on topics and classes, which the lists don't include —
-  // load each of the trainer's courses and classes. (Admins can't read
-  // quizzes from the API at all.)
+  // Quizzes live on topics and classes, which the lists don't include.
+  // Trainers load each of their courses and classes. Admins load every
+  // course's topics (which come with their quizzes) and the admin quiz list
+  // for class quizzes.
   const courseIds = courses.map((c) => c.id).join(",");
   const classIds = classes.map((c) => c.id).join(",");
   useEffect(() => {
-    if (isAdmin) return;
     courseIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchCourseContent(id)));
-    classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
+    if (isAdmin) dispatch(fetchAdminQuizzes());
+    else classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
   }, [dispatch, isAdmin, courseIds, classIds]);
 
   const rows = collectQuizzes(courses, classes);
@@ -594,6 +597,7 @@ function LearnerQuizzes({ currentUser }) {
 }
 
 export default function QuizzesPage({ onMenuClick }) {
+  usePageData(loadQuizzes);
   const currentUser = useSelector(selectCurrentUser);
   const isLearner = currentUser.role === "learner";
 

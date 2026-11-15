@@ -2,7 +2,7 @@ import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
 import { register } from "../../api/auth";
 import { normalizeUser } from "../../api/normalize";
-import { apiThunk } from "../apiThunk";
+import { apiThunk, listThunk } from "../apiThunk";
 import { logout } from "./authSlice";
 
 const initialState = {
@@ -12,7 +12,7 @@ const initialState = {
   status: "idle",
 };
 
-export const fetchUsers = apiThunk("users/fetch", () => api.listUsers());
+export const fetchUsers = listThunk("users/fetch", () => api.listUsers());
 
 export const updateUserRole = apiThunk("users/setRole", ({ userId, role }) => api.setUserRole(userId, role));
 

@@ -2,7 +2,7 @@ import { createSlice } from "@reduxjs/toolkit";
 import * as coursesApi from "../../api/courses";
 import { ApiError } from "../../api/client";
 import { normalizeCourse, normalizeTopic, normalizeQuiz, normalizeRevision, withTopics, courseToApi, lessonToApi, quizToApi } from "../../api/normalize";
-import { apiThunk, guardOf, roleOf } from "../apiThunk";
+import { apiThunk, listThunk, guardOf, roleOf } from "../apiThunk";
 import { updateCategory } from "./categoriesSlice";
 import { logout } from "./authSlice";
 
@@ -13,9 +13,11 @@ const initialState = {
 };
 
 // Admins see every course. Trainers see the approved catalog plus their own
-// courses in any status; learners just the catalog.
-export const fetchCourses = apiThunk("courses/fetch", async (_, { getState }) => {
+// courses in any status; learners just the catalog; signed-out visitors the
+// public catalog.
+export const fetchCourses = listThunk("courses/fetch", async (_, { getState }) => {
   const guard = guardOf(getState);
+  if (!guard) return coursesApi.listPublicCourses();
   if (guard === "admin") return coursesApi.listCourses("admin");
   const catalog = await coursesApi.listCourses("user");
   if (roleOf(getState) !== "trainer") return catalog;
@@ -39,8 +41,17 @@ async function loadQuizzes(topics) {
   );
 }
 
+// Admin quizzes identify their owner only by type ("App\\Models\\Topic" or a
+// class model) and id.
+export const isTopicQuiz = (q) => /topic$/i.test(q.owner_type || "");
+export const isClassQuiz = (q) => /class$/i.test(q.owner_type || "");
+
+// Admin: every quiz with its answers — attached to loaded topics here and to
+// classes in the classes slice.
+export const fetchAdminQuizzes = apiThunk("courses/fetchAdminQuizzes", () => coursesApi.listAdminQuizzes());
+
 // Loads what the current user may see of a course's topics/lessons:
-// - admin: the live topics (quizzes can't be read on the admin side)
+// - admin: the live topics, with quizzes from the admin quiz list
 // - owning trainer: the course itself while draft/denied, or the open
 //   revision of a live course (live topics aren't readable to them)
 // - anyone else: nothing — the API has no learner-facing content route yet.
@@ -50,7 +61,9 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
   const course = getState().courses.courses.find((c) => c.id === courseId);
 
   if (guard === "admin") {
-    const topics = (await coursesApi.listTopics("admin", courseId)).map(normalizeTopic);
+    const [apiTopics, quizzes] = await Promise.all([coursesApi.listTopics("admin", courseId), coursesApi.listAdminQuizzes()]);
+    const byTopic = new Map(quizzes.filter(isTopicQuiz).map((q) => [q.owner_id, q]));
+    const topics = apiTopics.map(normalizeTopic).map((t) => ({ ...t, quiz: normalizeQuiz(byTopic.get(t.id)) }));
     return { courseId, topics, revision: null };
   }
   if (!course || course.createdBy !== user?.id) {
@@ -229,6 +242,14 @@ const coursesSlice = createSlice({
       .addCase(setCourseOwner.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(deleteCourse.fulfilled, (state, action) => {
         state.courses = state.courses.filter((c) => c.id !== action.payload.courseId);
+      })
+      .addCase(fetchAdminQuizzes.fulfilled, (state, action) => {
+        const byTopic = new Map(action.payload.filter(isTopicQuiz).map((q) => [q.owner_id, q]));
+        state.courses.forEach((course) =>
+          course.topics.forEach((topic) => {
+            topic.quiz = normalizeQuiz(byTopic.get(topic.id));
+          })
+        );
       })
       // Courses store their category by name, so follow admin renames.
       .addCase(updateCategory.fulfilled, (state, action) => {

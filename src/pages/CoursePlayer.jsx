@@ -13,10 +13,13 @@ import QuizPreview from "../components/QuizPreview";
 import { RichText } from "../components/RichTextEditor";
 import { formatFileSize } from "../components/LessonListEditor";
 import TopicComments from "../components/TopicComments";
+import { usePageData } from "../hooks/usePageData";
+import { loadCoursePage } from "../store/loadAppData";
 
 const LESSON_ICONS = { video: PlayCircle, text: FileText, document: File };
 
 export default function CoursePlayer({ onMenuClick }) {
+  usePageData(loadCoursePage, { publicPage: true });
   const { courseId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -52,21 +55,6 @@ export default function CoursePlayer({ onMenuClick }) {
     }
     return {};
   }, [course, topics, activeItemId]);
-
-  // Course data needs a signed-in user — the API has no public catalog.
-  if (!course && !currentUser) {
-    return (
-      <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-stone-500">
-        Sign in to see this course.
-        <button
-          onClick={() => navigate("/login", { state: { from: `/course/${courseId}` } })}
-          className="rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-800"
-        >
-          Log in or sign up
-        </button>
-      </div>
-    );
-  }
 
   if (!course && (coursesStatus === "idle" || coursesStatus === "loading")) {
     return (
@@ -422,7 +410,12 @@ function CourseOverview({ course, topics, currentUser, enrollment, enrolling, on
                     <Lock size={13} className="shrink-0 text-stone-300" />
                   </li>
                 ))}
-                {topics.length === 0 && <li className="py-3 text-xs text-stone-400">Topics are coming soon.</li>}
+                {topics.length === 0 && (
+                  <li className="py-3 text-xs text-stone-400">
+                    {/* Topic lists aren't public — only say "coming soon" when we actually know there are none. */}
+                    {topicsKnown ? "Topics are coming soon." : "The topic list isn't shown before you enroll."}
+                  </li>
+                )}
               </ol>
             </div>
           </div>

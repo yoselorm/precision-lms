@@ -19,6 +19,8 @@ import { selectAllSubmissions, fetchSubmissions, gradeSubmission } from "../stor
 import { useApiAction } from "../hooks/useApiAction";
 import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
+import { usePageData } from "../hooks/usePageData";
+import { loadAssignments } from "../store/loadAppData";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
@@ -430,7 +432,8 @@ function AssignmentManager({ currentUser }) {
             <tbody className="divide-y divide-stone-100">
               {visible.map((row) => {
                 const closed = isAssignmentClosed(row.assignment);
-                const count = submissionsFor(row).length;
+                // The API's count, falling back to the submissions loaded here.
+                const count = row.assignment.submissionsCount ?? submissionsFor(row).length;
                 return (
                   <tr key={row.assignment.id}>
                     <td className="max-w-xs px-4 py-3">
@@ -448,8 +451,11 @@ function AssignmentManager({ currentUser }) {
                       <StatusPill closed={closed} />
                     </td>
                     <td className="px-4 py-3">
+                      {/* Admins see the count but can't list submissions through the API. */}
                       {isAdmin ? (
-                        <span className="text-stone-400">—</span>
+                        <span className="flex items-center gap-1 font-semibold text-stone-600">
+                          <FileCheck2 size={12} /> {count}
+                        </span>
                       ) : (
                         <button onClick={() => setViewing(row)} className="flex items-center gap-1 font-semibold text-brand-700 hover:underline">
                           <FileCheck2 size={12} /> {count}
@@ -566,6 +572,7 @@ function LearnerAssignments({ currentUser }) {
 }
 
 export default function AssignmentsPage({ onMenuClick }) {
+  usePageData(loadAssignments);
   const currentUser = useSelector(selectCurrentUser);
   const isLearner = currentUser.role === "learner";
 

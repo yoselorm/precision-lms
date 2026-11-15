@@ -7,6 +7,8 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectClassesByTrainer } from "../store/slices/classesSlice";
 import { selectCoursesByCreator } from "../store/slices/coursesSlice";
 import { selectDashboardStats } from "../store/slices/dashboardSlice";
+import { usePageData } from "../hooks/usePageData";
+import { loadDashboard } from "../store/loadAppData";
 
 const STATUS_PILL = {
   draft: "border-blue-200 bg-blue-50 text-blue-700",
@@ -32,6 +34,7 @@ function StatCard({ icon: Icon, label, value, accent }) {
 // Totals come from the trainer summary at GET /user/dashboard; the class
 // and course lists from the loaded data.
 export default function TrainerDashboard({ onMenuClick }) {
+  usePageData(loadDashboard);
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
   const stats = useSelector(selectDashboardStats);

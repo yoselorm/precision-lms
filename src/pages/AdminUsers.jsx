@@ -7,6 +7,8 @@ import { useApiAction } from "../hooks/useApiAction";
 import { pushToast } from "../store/slices/uiSlice";
 import ModalOverlay from "../components/ModalOverlay";
 import { useConfirm } from "../components/ConfirmDialog";
+import { usePageData } from "../hooks/usePageData";
+import { loadUsers } from "../store/loadAppData";
 
 const ROLES = ["learner", "admin", "trainer"];
 
@@ -153,6 +155,7 @@ function UserFormModal({ onClose }) {
 }
 
 export default function AdminUsers({ onMenuClick }) {
+  usePageData(loadUsers);
   const [run, busy] = useApiAction();
   const users = useSelector(selectAllUsers);
   const usersStatus = useSelector(selectUsersStatus);

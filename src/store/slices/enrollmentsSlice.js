@@ -1,7 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
 import { normalizeEnrollment } from "../../api/normalize";
-import { apiThunk } from "../apiThunk";
+import { apiThunk, listThunk } from "../apiThunk";
 import { upsertCourses } from "./coursesSlice";
 import { logout } from "./authSlice";
 
@@ -13,7 +13,7 @@ const initialState = {
 };
 
 // Enrollments embed their course, so those are merged into the courses list.
-export const fetchEnrollments = apiThunk("enrollments/fetch", async (_, { getState, dispatch }) => {
+export const fetchEnrollments = listThunk("enrollments/fetch", async (_, { getState, dispatch }) => {
   const enrollments = await api.listEnrollments();
   dispatch(upsertCourses(enrollments.map((e) => e.course).filter(Boolean)));
   return { enrollments, userId: getState().auth.currentUser?.id };
