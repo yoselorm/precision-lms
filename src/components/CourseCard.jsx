@@ -71,12 +71,14 @@ export default function CourseCard({ course, enrollment }) {
           >
             {!canEnroll
               ? "View course"
-              : status === "not-started"
+              : !enrollment
               ? course.price > 0
                 ? `Enroll — GH₵${course.price}`
                 : "Enroll now"
               : status === "completed"
               ? "Review"
+              : status === "not-started"
+              ? "Start course"
               : "Continue"}
           </button>
         </div>

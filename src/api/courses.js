@@ -62,6 +62,15 @@ export function deleteTopic(guard, topicId) {
   return apiRequest(`${base(guard)}/topics/${topicId}`, { method: "DELETE" });
 }
 
+// Partial updates — also used with just { sort_order } to reorder.
+export function updateTopic(guard, topicId, body) {
+  return apiRequest(`${base(guard)}/topics/${topicId}`, { method: "PATCH", body });
+}
+
+export function updateLesson(guard, lessonId, body) {
+  return apiRequest(`${base(guard)}/lessons/${lessonId}`, { method: "PATCH", body });
+}
+
 export function createLesson(guard, topicId, body) {
   return apiRequest(`${base(guard)}/topics/${topicId}/lessons`, { method: "POST", body });
 }

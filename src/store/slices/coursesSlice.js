@@ -130,6 +130,24 @@ export const addTopic = contentEdit("courses/addTopic", ({ courseId, title, desc
 
 export const removeTopic = contentEdit("courses/removeTopic", ({ topicId }, guard) => coursesApi.deleteTopic(guard, topicId));
 
+export const editTopic = contentEdit("courses/editTopic", ({ topicId, title, description }, guard) =>
+  coursesApi.updateTopic(guard, topicId, { title, description: description?.trim() || null })
+);
+
+// Saves a new order by renumbering every item (sort_order 0..n-1) — items
+// often share a sort_order, so swapping two values isn't enough.
+export const reorderTopics = contentEdit("courses/reorderTopics", ({ topicIds }, guard) =>
+  Promise.all(topicIds.map((id, index) => coursesApi.updateTopic(guard, id, { sort_order: index })))
+);
+
+export const editLesson = contentEdit("courses/editLesson", ({ lessonId, ...lesson }, guard) =>
+  coursesApi.updateLesson(guard, lessonId, lessonToApi(lesson))
+);
+
+export const reorderLessons = contentEdit("courses/reorderLessons", ({ lessonIds }, guard) =>
+  Promise.all(lessonIds.map((id, index) => coursesApi.updateLesson(guard, id, { sort_order: index })))
+);
+
 export const addLesson = contentEdit("courses/addLesson", ({ topicId, ...lesson }, guard) =>
   coursesApi.createLesson(guard, topicId, lessonToApi(lesson))
 );
@@ -220,7 +238,9 @@ const coursesSlice = createSlice({
           state.courses[index].contentError = unavailable;
           return;
         }
-        state.courses[index] = { ...withTopics(state.courses[index], topics), revision, contentStatus: "succeeded", contentError: null };
+        const sorted = [...topics].sort((a, b) => a.sortOrder - b.sortOrder);
+        const sortedRevision = revision && { ...revision, topics: [...revision.topics].sort((a, b) => a.sortOrder - b.sortOrder) };
+        state.courses[index] = { ...withTopics(state.courses[index], sorted), revision: sortedRevision, contentStatus: "succeeded", contentError: null };
       })
       .addCase(fetchCourseContent.rejected, (state, action) => {
         const course = state.courses.find((c) => c.id === action.meta.arg);

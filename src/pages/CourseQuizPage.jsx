@@ -29,7 +29,13 @@ export default function CourseQuizPage({ onMenuClick }) {
   // Learners can't list a course's topics from the API, but they can read
   // a topic's quiz by id — so load it straight from the URL's topic.
   const [quizState, setQuizState] = useState({ status: "loading", quiz: null });
+  const canRead = currentUser?.role === "learner" || currentUser?.role === "trainer";
   useEffect(() => {
+    // The quiz route is learner/trainer-only (admins use the Quizzes page).
+    if (!canRead) {
+      setQuizState({ status: "ready", quiz: null });
+      return;
+    }
     let cancelled = false;
     getTopicQuiz(topicId)
       .then((q) => !cancelled && setQuizState({ status: "ready", quiz: normalizeQuiz(q) }))
@@ -37,7 +43,7 @@ export default function CourseQuizPage({ onMenuClick }) {
     return () => {
       cancelled = true;
     };
-  }, [topicId]);
+  }, [topicId, canRead]);
   const quiz = quizState.quiz;
   const topic = knownTopic ?? { id: topicId, title: quiz?.title || "Topic quiz" };
 

@@ -20,15 +20,25 @@ export default function TopicComments({ courseId, topicId }) {
   const comments = useSelector((state) => selectCommentsForTopic(state, courseId, topicId));
   const [text, setText] = useState("");
 
+  // Comments live on learner/trainer routes only — admins have none.
+  const isAdmin = currentUser?.role === "admin";
   useEffect(() => {
-    dispatch(fetchComments({ topicId }));
-  }, [dispatch, topicId]);
+    if (!isAdmin) dispatch(fetchComments({ topicId }));
+  }, [dispatch, topicId, isAdmin]);
 
   const handlePost = async (e) => {
     e.preventDefault();
     if (!text.trim()) return;
     if (await run(addComment({ topicId, text: text.trim() }))) setText("");
   };
+
+  if (isAdmin) {
+    return (
+      <div className="rounded-xl border border-dashed border-stone-300 bg-white p-4 text-xs text-stone-400">
+        Topic discussions are only visible to learners and trainers.
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-4">

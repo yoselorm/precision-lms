@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye, Loader2 } from "lucide-react";
+import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, ArrowRight, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye, Loader2, X } from "lucide-react";
 import { selectCourseById, selectCoursesStatus, fetchCourseContent } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAssignmentsByCourse } from "../store/slices/assignmentsSlice";
@@ -13,10 +13,43 @@ import QuizPreview from "../components/QuizPreview";
 import { RichText } from "../components/RichTextEditor";
 import { formatFileSize } from "../components/LessonListEditor";
 import TopicComments from "../components/TopicComments";
+import GuardedVideo from "../components/GuardedVideo";
+import { pushToast } from "../store/slices/uiSlice";
+import { COMPLETE_SHARE } from "../utils/watchProgress";
 import { usePageData } from "../hooks/usePageData";
 import { loadCoursePage } from "../store/loadAppData";
 
 const LESSON_ICONS = { video: PlayCircle, text: FileText, document: File };
+const NO_IDS = [];
+const COMPLETE_PCT = Math.round(COMPLETE_SHARE * 100);
+
+// "Next lesson in 3…" after a video ends — goes on its own unless cancelled.
+function NextUpCountdown({ title, onGo, onCancel }) {
+  const [seconds, setSeconds] = useState(3);
+  useEffect(() => {
+    if (seconds <= 0) {
+      onGo();
+      return undefined;
+    }
+    const timer = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seconds]);
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm">
+      <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+      <span className="min-w-0 flex-1 text-brand-900">
+        Up next: <strong>{title}</strong> in {seconds}…
+      </span>
+      <button onClick={onGo} className="flex shrink-0 items-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800">
+        Go now <ArrowRight size={12} />
+      </button>
+      <button onClick={onCancel} title="Stay on this lesson" className="shrink-0 rounded-lg p-1.5 text-brand-700 hover:bg-brand-100">
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
 
 export default function CoursePlayer({ onMenuClick }) {
   usePageData(loadCoursePage, { publicPage: true });
@@ -39,12 +72,30 @@ export default function CoursePlayer({ onMenuClick }) {
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
   const courseAssignments = useSelector((state) => selectAssignmentsByCourse(state, courseId));
 
-  const firstLessonId = topics[0]?.lessons[0]?.id;
-  const [activeItemId, setActiveItemId] = useState(firstLessonId);
-
+  // Every item in play order: each topic's lessons, then its quiz.
+  const items = useMemo(
+    () =>
+      topics.flatMap((t) => [
+        ...t.lessons.map((l) => ({ id: l.id, kind: "lesson", title: l.title })),
+        ...(t.quiz?.questions?.length ? [{ id: `${t.id}__quiz`, kind: "quiz", title: "Knowledge check" }] : []),
+      ]),
+    [topics]
+  );
+  const completedIds = enrollment?.completedModuleIds ?? NO_IDS;
+  // Open at the first unfinished lesson, so learners pick up where they left off.
+  const startItemId = useMemo(
+    () => (items.find((i) => i.kind === "lesson" && !completedIds.includes(i.id)) ?? items[0])?.id,
+    [items, completedIds]
+  );
+  const [activeItemId, setActiveItemId] = useState(null);
   useEffect(() => {
-    if (!activeItemId && firstLessonId) setActiveItemId(firstLessonId);
-  }, [activeItemId, firstLessonId]);
+    if (!activeItemId && startItemId) setActiveItemId(startItemId);
+  }, [activeItemId, startItemId]);
+
+  // Video watch state for the guard rails (see GuardedVideo).
+  const [watchPct, setWatchPct] = useState({});
+  const [eligibleIds, setEligibleIds] = useState([]);
+  const [nextUpId, setNextUpId] = useState(null);
 
   const { activeTopic, activeLesson, isQuizActive } = useMemo(() => {
     if (!course) return {};
@@ -106,16 +157,56 @@ export default function CoursePlayer({ onMenuClick }) {
     );
   }
 
-  const completedIds = enrollment?.completedModuleIds ?? [];
+  const learnerMode = isLearner && !!enrollment;
   const isItemComplete = (id) => completedIds.includes(id);
 
-  // Progress is recomputed server-side from completed lessons.
-  const handleMarkComplete = () =>
-    run(completeLesson({ enrollmentId: enrollment.id, lessonId: activeLesson.id }), {
-      successMessage: `"${activeLesson.title}" marked as complete.`,
-    });
+  // Lessons unlock in order: each needs every earlier lesson finished. A
+  // topic's quiz opens once the lessons before it are done — quiz results
+  // aren't stored server-side, so they don't gate what comes after.
+  const isUnlocked = (id) => {
+    if (!learnerMode) return true;
+    const index = items.findIndex((i) => i.id === id);
+    return items.slice(0, index).every((i) => i.kind !== "lesson" || completedIds.includes(i.id));
+  };
+  const nextItemAfter = (id) => items[items.findIndex((i) => i.id === id) + 1] ?? null;
 
-  const switchItem = (id) => setActiveItemId(id);
+  const switchItem = (id) => {
+    if (!isUnlocked(id)) {
+      dispatch(pushToast({ type: "info", message: "Finish the previous lesson first to unlock this one." }));
+      return;
+    }
+    setNextUpId(null);
+    setActiveItemId(id);
+  };
+
+  // Progress is recomputed server-side from completed lessons.
+  const completeActive = (lesson, successMessage) =>
+    run(completeLesson({ enrollmentId: enrollment.id, lessonId: lesson.id }), { successMessage });
+
+  const handleMarkComplete = () => completeActive(activeLesson, `"${activeLesson.title}" marked as complete.`);
+
+  // Enough of the video watched: complete it right away (green tick).
+  const handleEligible = (lesson) => {
+    setEligibleIds((ids) => (ids.includes(lesson.id) ? ids : [...ids, lesson.id]));
+    if (learnerMode && !isItemComplete(lesson.id)) completeActive(lesson, `"${lesson.title}" completed.`);
+  };
+
+  // Video finished: move on if it counts as watched, otherwise say why not.
+  const handleVideoEnded = (lesson, share) => {
+    const watched = !learnerMode || isItemComplete(lesson.id) || share >= COMPLETE_SHARE;
+    if (!watched) {
+      dispatch(
+        pushToast({
+          type: "info",
+          message: `Watch at least ${COMPLETE_PCT}% of this video to complete it — you've watched ${Math.floor(share * 100)}%.`,
+        })
+      );
+      return;
+    }
+    const next = nextItemAfter(lesson.id);
+    if (next) setNextUpId(next.id);
+    else if (learnerMode) dispatch(pushToast({ type: "success", message: "That's the last lesson in this course — well done!" }));
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-stone-50 lg:flex-row">
@@ -170,15 +261,27 @@ export default function CoursePlayer({ onMenuClick }) {
                     const Icon = LESSON_ICONS[lesson.type] || FileText;
                     const done = isItemComplete(lesson.id);
                     const active = lesson.id === activeItemId;
+                    const locked = !isUnlocked(lesson.id);
                     return (
                       <button
                         key={lesson.id}
                         onClick={() => switchItem(lesson.id)}
+                        title={locked ? "Finish the previous lesson to unlock" : undefined}
                         className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
-                          active ? "bg-brand-50 text-brand-800 font-semibold" : "text-stone-600 hover:bg-stone-50"
+                          active
+                            ? "bg-brand-50 text-brand-800 font-semibold"
+                            : locked
+                            ? "cursor-not-allowed text-stone-400"
+                            : "text-stone-600 hover:bg-stone-50"
                         }`}
                       >
-                        {done ? <CheckCircle2 size={15} className="shrink-0 text-emerald-600" /> : <Circle size={15} className="shrink-0 text-stone-300" />}
+                        {done ? (
+                          <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                        ) : locked ? (
+                          <Lock size={14} className="shrink-0 text-stone-300" />
+                        ) : (
+                          <Circle size={15} className="shrink-0 text-stone-300" />
+                        )}
                         <Icon size={13} className="shrink-0 text-stone-400" />
                         <span className="flex-1">{lesson.title}</span>
                         <span className="text-[10px] text-stone-400">{lesson.durationMins}m</span>
@@ -189,12 +292,19 @@ export default function CoursePlayer({ onMenuClick }) {
                   {hasQuiz && (
                     <button
                       onClick={() => switchItem(quizId)}
+                      title={!isUnlocked(quizId) ? "Finish this topic's lessons to unlock" : undefined}
                       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
-                        activeItemId === quizId ? "bg-brand-50 text-brand-800 font-semibold" : "text-stone-600 hover:bg-stone-50"
+                        activeItemId === quizId
+                          ? "bg-brand-50 text-brand-800 font-semibold"
+                          : !isUnlocked(quizId)
+                          ? "cursor-not-allowed text-stone-400"
+                          : "text-stone-600 hover:bg-stone-50"
                       }`}
                     >
                       {isItemComplete(quizId) ? (
                         <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                      ) : !isUnlocked(quizId) ? (
+                        <Lock size={14} className="shrink-0 text-stone-300" />
                       ) : (
                         <Circle size={15} className="shrink-0 text-stone-300" />
                       )}
@@ -234,11 +344,26 @@ export default function CoursePlayer({ onMenuClick }) {
               {activeLesson.description && <p className="mt-1 text-sm text-stone-500">{activeLesson.description}</p>}
             </div>
 
+            {nextUpId && nextItemAfter(activeLesson.id)?.id === nextUpId && (
+              <NextUpCountdown
+                title={nextItemAfter(activeLesson.id).title}
+                onGo={() => switchItem(nextUpId)}
+                onCancel={() => setNextUpId(null)}
+              />
+            )}
+
             {activeLesson.type === "video" ? (
               activeLesson.videoUrl ? (
-                <video key={activeLesson.id} controls className="aspect-video w-full rounded-xl bg-stone-900">
-                  <source src={activeLesson.videoUrl} />
-                </video>
+                <GuardedVideo
+                  key={activeLesson.id}
+                  src={activeLesson.videoUrl}
+                  userId={currentUser?.id}
+                  lessonId={activeLesson.id}
+                  guard={learnerMode && !isItemComplete(activeLesson.id)}
+                  onProgress={(pct) => setWatchPct((prev) => ({ ...prev, [activeLesson.id]: pct }))}
+                  onEligible={() => handleEligible(activeLesson)}
+                  onEnded={(share) => handleVideoEnded(activeLesson, share)}
+                />
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-xl bg-stone-900">
                   <PlayCircle size={56} className="text-white/70" />
@@ -295,15 +420,37 @@ export default function CoursePlayer({ onMenuClick }) {
               </div>
             )}
 
-            {isLearner && (
-              <button
-                onClick={handleMarkComplete}
-                disabled={busy || isItemComplete(activeLesson.id)}
-                className="rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isItemComplete(activeLesson.id) ? "Completed" : "Mark as complete"}
-              </button>
-            )}
+            {learnerMode && (() => {
+              const done = isItemComplete(activeLesson.id);
+              // Uploaded/linked videos complete by watching; other lessons by hand.
+              const watchGated = activeLesson.type === "video" && !!activeLesson.videoUrl;
+              const canComplete = !watchGated || eligibleIds.includes(activeLesson.id);
+              const next = nextItemAfter(activeLesson.id);
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleMarkComplete}
+                    disabled={busy || done || !canComplete}
+                    className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {done && <CheckCircle2 size={15} />}
+                    {done
+                      ? "Completed"
+                      : canComplete
+                      ? "Mark as complete"
+                      : `Watch ${COMPLETE_PCT}% to complete · ${watchPct[activeLesson.id] ?? 0}% watched`}
+                  </button>
+                  {done && next && (
+                    <button
+                      onClick={() => switchItem(next.id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
+                    >
+                      Next: {next.title} <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeTopic && <TopicComments courseId={course.id} topicId={activeTopic.id} />}
           </div>

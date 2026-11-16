@@ -59,18 +59,24 @@ export function normalizeLesson(l) {
     videoUrl: l.video_url || "",
     body: l.body || "",
     fileUrl: l.file_url || "",
+    sortOrder: l.sort_order ?? 0,
     // Not modelled by the API — kept so lesson UIs that list extra
     // downloads still render.
     resources: [],
   };
 }
 
+// Lessons nested in a course's topics don't always come back sorted, so
+// order by sort_order here (stable, so ties keep the server's order).
+const bySortOrder = (a, b) => a.sortOrder - b.sortOrder;
+
 export function normalizeTopic(t) {
   return {
     id: t.id,
     title: t.title,
     description: t.description || "",
-    lessons: (t.lessons || []).map(normalizeLesson),
+    sortOrder: t.sort_order ?? 0,
+    lessons: (t.lessons || []).map(normalizeLesson).sort(bySortOrder),
     quiz: null,
   };
 }

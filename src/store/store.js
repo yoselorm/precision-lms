@@ -13,6 +13,7 @@ import certificatesReducer from "./slices/certificatesSlice";
 import dashboardReducer from "./slices/dashboardSlice";
 import { loadState, saveState, debounce } from "../utils/persistence";
 import { configureApiClient } from "../api/client";
+import { fetchMe } from "../api/auth";
 
 export const store = configureStore({
   reducer: {
@@ -56,9 +57,23 @@ const persistState = debounce((state) => {
 
 store.subscribe(() => persistState(store.getState()));
 
-// An expired/revoked token anywhere in the app drops the user back to the
-// signed-out view rather than leaving every request failing.
+// A 401 can mean the session has expired, or just that this kind of account
+// isn't allowed on that endpoint (an admin token on a /v1/user route returns
+// 401 too). So before signing anyone out, ask /me whether the token still
+// works; only a dead token ends the session. One check covers a burst of
+// 401s.
+let sessionCheck = null;
 configureApiClient({
   tokenGetter: () => store.getState().auth.token,
-  unauthorizedHandler: () => store.dispatch(logout()),
+  unauthorizedHandler: () => {
+    if (sessionCheck) return;
+    const { token, guard } = store.getState().auth;
+    if (!token) return;
+    sessionCheck = fetchMe(guard)
+      .catch((err) => {
+        // Still the same session, and the server rejected it: it's over.
+        if (err.status === 401 && store.getState().auth.token === token) store.dispatch(logout());
+      })
+      .finally(() => (sessionCheck = null));
+  },
 });
