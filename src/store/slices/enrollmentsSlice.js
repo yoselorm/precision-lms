@@ -26,17 +26,34 @@ export const enrollInCourse = apiThunk("enrollments/enroll", async ({ courseId }
   return { enrollment, userId: getState().auth.currentUser?.id };
 });
 
+// The list omits which lessons are done; the course player loads the full
+// enrollment for that.
+export const fetchEnrollment = apiThunk("enrollments/fetchOne", async ({ enrollmentId }, { getState }) => ({
+  enrollment: await api.getEnrollment(enrollmentId),
+  userId: getState().auth.currentUser?.id,
+}));
+
 // Progress/status are recomputed server-side (and points awarded).
 export const completeLesson = apiThunk("enrollments/completeLesson", async ({ enrollmentId, lessonId }, { getState }) => ({
   enrollment: await api.completeLesson(enrollmentId, lessonId),
   userId: getState().auth.currentUser?.id,
 }));
 
+// Merges an enrollment from the API, keeping session-only quiz results and
+// any completed-lesson list the response didn't include.
+function merge(previous, incoming) {
+  return {
+    ...incoming,
+    completedModuleIds: incoming.completedModuleIds ?? previous?.completedModuleIds ?? [],
+    topicQuizzes: previous?.topicQuizzes || {},
+  };
+}
+
 function upsert(state, { enrollment, userId }) {
   const incoming = normalizeEnrollment(enrollment, userId);
   const index = state.enrollments.findIndex((e) => e.id === incoming.id);
-  if (index === -1) state.enrollments.push(incoming);
-  else state.enrollments[index] = { ...incoming, topicQuizzes: state.enrollments[index].topicQuizzes };
+  if (index === -1) state.enrollments.push(merge(null, incoming));
+  else state.enrollments[index] = merge(state.enrollments[index], incoming);
 }
 
 const enrollmentsSlice = createSlice({
@@ -67,16 +84,14 @@ const enrollmentsSlice = createSlice({
         state.status = "succeeded";
         const { enrollments, userId } = action.payload;
         const previous = new Map(state.enrollments.map((e) => [e.id, e]));
-        state.enrollments = enrollments.map((e) => ({
-          ...normalizeEnrollment(e, userId),
-          topicQuizzes: previous.get(e.id)?.topicQuizzes || {},
-        }));
+        state.enrollments = enrollments.map((e) => merge(previous.get(e.id), normalizeEnrollment(e, userId)));
       })
       .addCase(fetchEnrollments.rejected, (state) => {
         state.status = "failed";
       })
       .addCase(enrollInCourse.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(completeLesson.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(fetchEnrollment.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(logout, () => initialState);
   },
 });

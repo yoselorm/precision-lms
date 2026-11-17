@@ -23,6 +23,11 @@ export function listEnrollments() {
   return apiRequest("/v1/user/enrollments");
 }
 
+// One enrollment — unlike the list, it includes completed_lesson_ids.
+export function getEnrollment(id) {
+  return apiRequest(`/v1/user/enrollments/${id}`);
+}
+
 export function enroll(courseId) {
   return apiRequest("/v1/user/enrollments", { method: "POST", body: { course_id: courseId } });
 }

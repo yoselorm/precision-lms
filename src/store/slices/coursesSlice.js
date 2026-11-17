@@ -52,9 +52,9 @@ export const fetchAdminQuizzes = apiThunk("courses/fetchAdminQuizzes", () => cou
 
 // Loads what the current user may see of a course's topics/lessons:
 // - admin: the live topics, with quizzes from the admin quiz list
-// - owning trainer: the course itself while draft/denied, or the open
-//   revision of a live course (live topics aren't readable to them)
-// - anyone else: nothing — the API has no learner-facing content route yet.
+// - owning trainer: the course itself while draft/denied; for a live course
+//   the live topics plus their open revision (the editable copy), if any
+// - learner: the live topics of a course they're enrolled in (403 otherwise)
 export const fetchCourseContent = apiThunk("courses/fetchContent", async (courseId, { getState }) => {
   const guard = guardOf(getState);
   const user = getState().auth.currentUser;
@@ -67,7 +67,15 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
     return { courseId, topics, revision: null };
   }
   if (!course || course.createdBy !== user?.id) {
-    return { courseId, unavailable: "Course content isn't available to learners from the server yet." };
+    try {
+      const topics = (await coursesApi.getCourseContent(courseId)).map(normalizeTopic);
+      return { courseId, topics: await loadQuizzes(topics), revision: null };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        return { courseId, unavailable: "Enroll in this course to see its lessons." };
+      }
+      throw err;
+    }
   }
   if (course.status === "pending") {
     return { courseId, unavailable: "Course content can't be viewed while it's awaiting approval." };
@@ -79,9 +87,11 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 404)) throw err;
     }
-    if (!revision) return { courseId, topics: [], revision: null };
+    // Live content (what learners see), for previewing the course.
+    const live = await loadQuizzes((await coursesApi.getCourseContent(courseId)).map(normalizeTopic));
+    if (!revision) return { courseId, topics: live, revision: null };
     const normalized = normalizeRevision(revision);
-    return { courseId, topics: [], revision: { ...normalized, topics: await loadQuizzes(normalized.topics) } };
+    return { courseId, topics: live, revision: { ...normalized, topics: await loadQuizzes(normalized.topics) } };
   }
   const topics = (await coursesApi.listTopics("user", courseId)).map(normalizeTopic);
   return { courseId, topics: await loadQuizzes(topics), revision: null };

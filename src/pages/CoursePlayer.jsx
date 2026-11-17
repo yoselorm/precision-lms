@@ -5,7 +5,7 @@ import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft
 import { selectCourseById, selectCoursesStatus, fetchCourseContent } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAssignmentsByCourse } from "../store/slices/assignmentsSlice";
-import { selectEnrollment, enrollInCourse, completeLesson } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment, enrollInCourse, completeLesson, fetchEnrollment } from "../store/slices/enrollmentsSlice";
 import { useApiAction } from "../hooks/useApiAction";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
@@ -63,14 +63,22 @@ export default function CoursePlayer({ onMenuClick }) {
   const [run, busy] = useApiAction();
   const courseLoaded = !!course;
 
+  // Keyed on the user's id: the user record itself refreshes after load.
+  const userId = currentUser?.id;
   useEffect(() => {
-    if (courseLoaded && currentUser) dispatch(fetchCourseContent(courseId));
-  }, [dispatch, courseId, courseLoaded, currentUser]);
+    if (courseLoaded && userId) dispatch(fetchCourseContent(courseId));
+  }, [dispatch, courseId, courseLoaded, userId]);
 
   // A trainer only sees their live course's content through an open update.
   const topics = course ? course.revision?.topics ?? course.topics : [];
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
   const courseAssignments = useSelector((state) => selectAssignmentsByCourse(state, courseId));
+
+  // Which lessons are done only comes with the single-enrollment response.
+  const enrollmentId = enrollment?.id;
+  useEffect(() => {
+    if (enrollmentId) dispatch(fetchEnrollment({ enrollmentId }));
+  }, [dispatch, enrollmentId]);
 
   // Every item in play order: each topic's lessons, then its quiz.
   const items = useMemo(
@@ -140,8 +148,8 @@ export default function CoursePlayer({ onMenuClick }) {
   // topic titles). Only learners can enroll; admins and the course's own
   // trainer can open the full player as a read-only preview.
   const isLearner = currentUser?.role === "learner";
-  // Enrolled learners also land here while the server can't hand them the
-  // course's lessons (no learner-facing content endpoint yet).
+  // Enrolled learners also land here if their course content can't be
+  // loaded (it's refused until enrollment is recorded).
   const contentUnavailable = course.contentStatus === "unavailable";
   if ((!enrollment && !canPreviewUnapproved) || (enrollment && contentUnavailable)) {
     return (
@@ -151,7 +159,11 @@ export default function CoursePlayer({ onMenuClick }) {
         currentUser={currentUser}
         enrollment={enrollment}
         enrolling={busy}
-        onEnroll={() => run(enrollInCourse({ courseId: course.id }), { successMessage: `Enrolled in "${course.title}".` })}
+        onEnroll={async () => {
+          const enrolled = await run(enrollInCourse({ courseId: course.id }), { successMessage: `Enrolled in "${course.title}".` });
+          // Content was refused before enrolling — load it now.
+          if (enrolled) dispatch(fetchCourseContent(course.id));
+        }}
         onBack={() => (window.history.length > 1 ? navigate(-1) : navigate("/catalog"))}
       />
     );
@@ -385,8 +397,8 @@ export default function CoursePlayer({ onMenuClick }) {
                 </div>
               )
             ) : activeLesson.body ? (
-              <div className="whitespace-pre-line rounded-xl border border-stone-200 bg-white p-6 text-sm leading-relaxed text-stone-600">
-                {activeLesson.body}
+              <div className="rounded-xl border border-stone-200 bg-white p-6">
+                <RichText html={activeLesson.body} className="text-sm leading-relaxed text-stone-600" />
               </div>
             ) : (
               <div className="rounded-xl border border-stone-200 bg-white p-6 text-sm leading-relaxed text-stone-600">
@@ -541,7 +553,7 @@ function CourseOverview({ course, topics, currentUser, enrollment, enrolling, on
               <h2 className="text-sm font-bold text-stone-800">Topics covered</h2>
               <p className="mt-0.5 text-xs text-stone-400">
                 {enrollment
-                  ? "You're enrolled. The course materials aren't available from the server yet — check back soon."
+                  ? "You're enrolled, but the course materials couldn't be loaded. Refresh the page to try again."
                   : "Enroll to unlock the course materials."}
               </p>
               <ol className="mt-4 divide-y divide-stone-100">

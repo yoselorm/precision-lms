@@ -54,6 +54,12 @@ export function listTopics(guard, courseId) {
   return apiRequest(`${base(guard)}/courses/${courseId}/topics`);
 }
 
+// Read-only content for taking a course: enrolled learners and the owning
+// trainer (403 for anyone else). Topics with their lessons, live version.
+export function getCourseContent(courseId) {
+  return apiRequest(`/v1/user/courses/${courseId}/content`);
+}
+
 export function createTopic(guard, courseId, body) {
   return apiRequest(`${base(guard)}/courses/${courseId}/topics`, { method: "POST", body });
 }

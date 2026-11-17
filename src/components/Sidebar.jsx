@@ -226,6 +226,13 @@ export default function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onClo
                     className="w-full appearance-none rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white outline-none cursor-pointer backdrop-blur-sm focus:border-white/40 [&>option]:text-stone-800"
                   >
                     {!realUser && <option value={currentUser.id}>{currentUser.name} — you</option>}
+                    {/* After a reload mid-preview the user list can't be refetched (the
+                        session is the previewed user's), so always list them. */}
+                    {realUser && !allUsers.some((u) => u.id === currentUser.id) && (
+                      <option value={currentUser.id}>
+                        {currentUser.name} — {currentUser.role}
+                      </option>
+                    )}
                     {allUsers.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name} — {u.role}

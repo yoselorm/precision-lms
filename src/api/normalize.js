@@ -275,7 +275,9 @@ export function normalizeEnrollment(e, userId) {
     progress: e.progress || 0,
     dueDate: day(e.due_date),
     completedAt: day(e.completed_at),
-    completedModuleIds: e.completed_lesson_ids || [],
+    // null when the response leaves it out (the enrollment list does) —
+    // callers keep what they already knew rather than clearing it.
+    completedModuleIds: e.completed_lesson_ids ?? null,
     topicQuizzes: {},
   };
 }

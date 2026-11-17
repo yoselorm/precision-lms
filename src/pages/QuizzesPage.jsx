@@ -359,7 +359,9 @@ function QuizManager({ currentUser }) {
         ? allCourses
         : allCourses
             .filter((c) => c.createdBy === currentUser.id)
-            .map((c) => (c.status === "approved" ? { ...c, topics: editableTopicsOf(c), isLiveForTrainer: true } : c)),
+            // A live course's quizzes are only editable through its open
+            // update, so without one there's nothing to manage here.
+            .map((c) => (c.status === "approved" ? { ...c, topics: c.revision?.topics ?? [], isLiveForTrainer: true } : c)),
     [isAdmin, allCourses, currentUser.id]
   );
 
@@ -514,12 +516,14 @@ function LearnerQuizzes({ currentUser }) {
   const courses = allCourses.filter((c) => enrolledIds.has(c.id));
   const classes = allClasses.filter((c) => c.memberIds.includes(currentUser.id));
 
-  // Class quizzes load with each class's detail. Course quizzes can't be
-  // found for learners yet — the API doesn't list a course's topics to them.
+  // Class quizzes load with each class's detail; course quizzes with each
+  // enrolled course's content.
   const classIds = classes.map((c) => c.id).join(",");
+  const courseIds = courses.map((c) => c.id).join(",");
   useEffect(() => {
     classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
-  }, [dispatch, classIds]);
+    courseIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchCourseContent(id)));
+  }, [dispatch, classIds, courseIds]);
 
   const rows = collectQuizzes(courses, classes).map((row) => {
     const attempts =
