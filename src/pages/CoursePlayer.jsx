@@ -372,6 +372,7 @@ export default function CoursePlayer({ onMenuClick }) {
                   userId={currentUser?.id}
                   lessonId={activeLesson.id}
                   guard={learnerMode && !isItemComplete(activeLesson.id)}
+                  watermark={learnerMode ? `${currentUser.name} · ${currentUser.email}` : undefined}
                   onProgress={(pct) => setWatchPct((prev) => ({ ...prev, [activeLesson.id]: pct }))}
                   onEligible={() => handleEligible(activeLesson)}
                   onEnded={(share) => handleVideoEnded(activeLesson, share)}

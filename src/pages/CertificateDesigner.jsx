@@ -14,6 +14,8 @@ import {
   ImagePlus,
   Italic,
   PenLine,
+  Pipette,
+  Square,
   RotateCcw,
   PenTool,
   Trash2,
@@ -35,11 +37,15 @@ import {
   textElement,
   imageElement,
   signatureElement,
+  boxElement,
+  orientationOf,
+  PORTRAIT_PAGE,
   newElementId,
   readImageFile,
   formatCertificateDate,
 } from "../utils/certificateTemplate";
 import ModalOverlay from "../components/ModalOverlay";
+import TemplateUploadButton from "../components/TemplateUploadButton";
 import { usePageData } from "../hooks/usePageData";
 import { loadCertificates } from "../store/loadAppData";
 
@@ -106,6 +112,29 @@ function ImagePickButton({ label, onPick, keepTransparency, maxWidth, className 
         }}
       />
     </>
+  );
+}
+
+// Picks a colour from anywhere on screen — handy for matching a cover box
+// to an uploaded template's background. Only in browsers with EyeDropper.
+function EyedropperButton({ onPick }) {
+  if (typeof window === "undefined" || !("EyeDropper" in window)) return null;
+  return (
+    <button
+      type="button"
+      title="Pick a colour from the certificate"
+      onClick={async () => {
+        try {
+          const { sRGBHex } = await new window.EyeDropper().open();
+          onPick(sRGBHex);
+        } catch {
+          // Cancelled.
+        }
+      }}
+      className="flex h-8 items-center gap-1 rounded-lg border border-stone-200 px-2 text-[11px] font-semibold text-stone-600 hover:bg-stone-50"
+    >
+      <Pipette size={13} /> Pick from page
+    </button>
   );
 }
 
@@ -200,7 +229,7 @@ function ElementPanel({ element, onChange, onDelete, onDuplicate, onLayer, onDra
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-bold capitalize text-stone-800">{element.type}</p>
+        <p className="text-sm font-bold capitalize text-stone-800">{element.type === "box" ? "Cover box" : element.type}</p>
         <div className="flex gap-1">
           <ToggleButton onClick={() => onLayer(1)} title="Bring forward">
             <ArrowUp size={14} />
@@ -273,6 +302,21 @@ function ElementPanel({ element, onChange, onDelete, onDuplicate, onLayer, onDra
         </>
       )}
 
+      {element.type === "box" && (
+        <>
+          <p className="text-[11px] text-stone-400">
+            Place it over text printed on your template (like a sample name or date), then put a field on top.
+          </p>
+          <Field label="Colour">
+            <div className="flex items-center gap-2">
+              <input type="color" value={element.color} onChange={(e) => onChange({ color: e.target.value })} className="h-8 w-12 cursor-pointer rounded border border-stone-200" />
+              <EyedropperButton onPick={(color) => onChange({ color })} />
+            </div>
+          </Field>
+          <RangeField label="Height" value={element.height ?? 8} min={1} max={100} step={0.5} suffix="%" onChange={(v) => onChange({ height: v })} />
+        </>
+      )}
+
       {element.type === "image" && (
         <ImagePickButton
           label={
@@ -340,14 +384,62 @@ function ElementPanel({ element, onChange, onDelete, onDuplicate, onLayer, onDra
   );
 }
 
-function BackgroundPanel({ background, onChange, onReset }) {
+function BackgroundPanel({ template, background, onChange, onReset }) {
+  // Uploaded designs set their own page shape; standard pages can be turned.
+  const usingOwnTemplate = !!background.fromTemplate;
+  const orientation = orientationOf(template);
   return (
     <div className="space-y-4">
       <p className="text-sm font-bold text-stone-800">Page</p>
       <p className="text-xs text-stone-400">Click an element on the certificate to edit it, or use the buttons above to add one.</p>
+      <Field label="Your own template">
+        <p className="mb-2 text-[11px] text-stone-400">
+          Upload a finished certificate design (PNG, JPG or PDF) to use as the whole page. For a PDF, only the first page is used.
+        </p>
+        <TemplateUploadButton
+          label={usingOwnTemplate ? "Replace template" : "Upload template (image or PDF)"}
+          onUploaded={({ image, pageWidth, pageHeight }) => onChange({ image, pageWidth, pageHeight, border: false, fromTemplate: true })}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:opacity-60"
+        />
+        {usingOwnTemplate && (
+          <button
+            onClick={() => onChange({ image: "", pageWidth: undefined, pageHeight: undefined, fromTemplate: false })}
+            className="mt-2 text-[11px] font-semibold text-rose-600 hover:underline"
+          >
+            Remove template (back to a blank standard page)
+          </button>
+        )}
+      </Field>
       <Field label="Background colour">
         <input type="color" value={background.color || "#ffffff"} onChange={(e) => onChange({ color: e.target.value })} className="h-8 w-12 cursor-pointer rounded border border-stone-200" />
       </Field>
+      {!usingOwnTemplate && (
+        <Field label="Orientation">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ["landscape", "Landscape"],
+              ["portrait", "Portrait"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() =>
+                  onChange(value === "portrait" ? { ...PORTRAIT_PAGE } : { pageWidth: undefined, pageHeight: undefined })
+                }
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  orientation === value ? "border-brand-600 bg-brand-50 text-brand-800" : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-stone-400">
+            Fields keep their positions — adjust them, or use “Reset to default layout” for a layout made for this orientation.
+          </p>
+        </Field>
+      )}
+      {!usingOwnTemplate && (
       <Field label="Background image">
         {background.image && <img src={background.image} alt="" className="mb-2 h-20 w-full rounded-lg border border-stone-200 object-cover" />}
         <div className="flex gap-2">
@@ -368,6 +460,7 @@ function BackgroundPanel({ background, onChange, onReset }) {
           )}
         </div>
       </Field>
+      )}
       <div className="flex items-end gap-3">
         <label className="flex items-center gap-2 text-xs font-semibold text-stone-600">
           <input type="checkbox" checked={!!background.border} onChange={(e) => onChange({ border: e.target.checked })} className="accent-brand-700" />
@@ -581,12 +674,16 @@ export default function CertificateDesigner({ onMenuClick }) {
               <button onClick={() => addElement(signatureElement())} className={toolbarButton}>
                 <PenTool size={13} /> Add signature
               </button>
+              <button onClick={() => addElement(boxElement())} className={toolbarButton} title="Cover text printed on your template">
+                <Square size={13} /> Add cover box
+              </button>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
               <CertificateCanvas
                 template={template}
                 data={sampleData}
+                maxHeight="calc(100vh - 12rem)"
                 editable
                 selectedId={selectedId}
                 onSelect={(id) => {
@@ -618,6 +715,7 @@ export default function CertificateDesigner({ onMenuClick }) {
               />
             ) : (
               <BackgroundPanel
+                template={template}
                 background={template.background}
                 onChange={(patch) => update((t) => ({ ...t, background: { ...t.background, ...patch } }))}
                 onReset={async () => {
@@ -627,7 +725,7 @@ export default function CertificateDesigner({ onMenuClick }) {
                     confirmLabel: "Reset design",
                   });
                   if (!ok) return;
-                  update(() => defaultTemplate(course.certificate));
+                  update((t) => defaultTemplate(course.certificate, t.background?.fromTemplate ? "landscape" : orientationOf(t)));
                   setSelectedId(null);
                 }}
               />

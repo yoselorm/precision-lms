@@ -360,7 +360,9 @@ function parseBackground(background) {
 }
 
 export function normalizeCertificate(c) {
-  const hasDesign = Array.isArray(c.template?.elements) && c.template.elements.length > 0;
+  // A saved design has elements, or at least a background (an uploaded
+  // template with nothing placed on it yet).
+  const hasDesign = (Array.isArray(c.template?.elements) && c.template.elements.length > 0) || !!c.template?.background;
   return {
     id: c.id,
     courseId: c.course_id || null,

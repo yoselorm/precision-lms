@@ -1,7 +1,10 @@
 import React, { forwardRef, useEffect, useRef, useState } from "react";
-import { PAGE_WIDTH, PAGE_HEIGHT, FONT_FAMILIES, fillPlaceholders, resolveImageSrc } from "../utils/certificateTemplate";
+import { getPageSize, FONT_FAMILIES, fillPlaceholders, resolveImageSrc } from "../utils/certificateTemplate";
 
-function ElementView({ element, data }) {
+function ElementView({ element, data, pageHeight }) {
+  if (element.type === "box") {
+    return <div style={{ height: ((element.height ?? 8) / 100) * pageHeight, backgroundColor: element.color || "#ffffff" }} />;
+  }
   if (element.type === "text") {
     return (
       <div
@@ -40,21 +43,22 @@ function ElementView({ element, data }) {
   );
 }
 
-// The certificate page at its true size (PAGE_WIDTH × PAGE_HEIGHT). Used
-// directly for downloads, and scaled down by CertificateCanvas for display.
+// The certificate page at its true size (see getPageSize). Used directly for
+// downloads, and scaled down by CertificateCanvas for display.
 export const CertificatePage = forwardRef(function CertificatePage(
   { template, data, editable = false, selectedId, onElementPointerDown, onBackgroundPointerDown },
   ref
 ) {
   const { background = {}, elements = [] } = template;
+  const page = getPageSize(template);
   return (
     <div
       ref={ref}
       onPointerDown={editable ? onBackgroundPointerDown : undefined}
       style={{
         position: "relative",
-        width: PAGE_WIDTH,
-        height: PAGE_HEIGHT,
+        width: page.width,
+        height: page.height,
         overflow: "hidden",
         backgroundColor: background.color || "#ffffff",
         backgroundImage: background.image ? `url(${background.image})` : undefined,
@@ -86,7 +90,7 @@ export const CertificatePage = forwardRef(function CertificatePage(
               outlineOffset: 4,
             }}
           >
-            <ElementView element={el} data={data} />
+            <ElementView element={el} data={data} pageHeight={page.height} />
           </div>
         );
       })}
@@ -94,31 +98,33 @@ export const CertificatePage = forwardRef(function CertificatePage(
   );
 });
 
-// Responsive wrapper: scales the page to fit its container's width. When
-// `editable`, elements can be selected and dragged; moves are reported as
-// percentage positions through onMoveElement.
-export default function CertificateCanvas({ template, data, editable = false, selectedId, onSelect, onMoveElement }) {
+// Responsive wrapper: scales the page to fit its container's width — and,
+// with `maxHeight` (a CSS length), never taller than that, so portrait
+// templates stay on screen. When `editable`, elements can be selected and
+// dragged; moves are reported as percentage positions through onMoveElement.
+export default function CertificateCanvas({ template, data, editable = false, selectedId, onSelect, onMoveElement, maxHeight, className = "" }) {
   const wrapperRef = useRef(null);
   const [scale, setScale] = useState(0.5);
   const dragRef = useRef(null);
+  const page = getPageSize(template);
 
   useEffect(() => {
     const node = wrapperRef.current;
     if (!node) return;
-    const update = () => setScale(node.clientWidth / PAGE_WIDTH);
+    const update = () => setScale(node.clientWidth / page.width);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [page.width]);
 
   useEffect(() => {
     if (!editable) return;
     const handleMove = (e) => {
       const drag = dragRef.current;
       if (!drag) return;
-      const dx = ((e.clientX - drag.startX) / (PAGE_WIDTH * scale)) * 100;
-      const dy = ((e.clientY - drag.startY) / (PAGE_HEIGHT * scale)) * 100;
+      const dx = ((e.clientX - drag.startX) / (page.width * scale)) * 100;
+      const dy = ((e.clientY - drag.startY) / (page.height * scale)) * 100;
       const clamp = (v) => Math.round(Math.min(100, Math.max(0, v)) * 10) / 10;
       onMoveElement?.(drag.id, { x: clamp(drag.originX + dx), y: clamp(drag.originY + dy) });
     };
@@ -131,7 +137,7 @@ export default function CertificateCanvas({ template, data, editable = false, se
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [editable, scale, onMoveElement]);
+  }, [editable, scale, onMoveElement, page.width, page.height]);
 
   const handleElementPointerDown = (e, el) => {
     e.stopPropagation();
@@ -141,8 +147,12 @@ export default function CertificateCanvas({ template, data, editable = false, se
   };
 
   return (
-    <div ref={wrapperRef} className="w-full" style={{ height: PAGE_HEIGHT * scale }}>
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: PAGE_WIDTH, height: PAGE_HEIGHT }}>
+    <div
+      ref={wrapperRef}
+      className={`mx-auto w-full ${className}`}
+      style={{ height: page.height * scale, maxWidth: maxHeight ? `calc(${maxHeight} * ${page.width / page.height})` : undefined }}
+    >
+      <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: page.width, height: page.height }}>
         <CertificatePage
           template={template}
           data={data}

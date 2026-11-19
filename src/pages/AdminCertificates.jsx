@@ -6,7 +6,8 @@ import Header from "../components/Header";
 import CertificateView from "../components/CertificateView";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectAllCertificates, attachCertificates, saveCourseCertificate, deleteCourseCertificate } from "../store/slices/certificatesSlice";
-import { defaultTemplate } from "../utils/certificateTemplate";
+import { defaultTemplate, textElement } from "../utils/certificateTemplate";
+import TemplateUploadButton from "../components/TemplateUploadButton";
 import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -36,6 +37,12 @@ function CertificateFormModal({ courses, editing, onClose }) {
         }
   );
 
+  // New certificates start from the standard layout or the client's own
+  // uploaded design (image or a PDF's first page).
+  const [startFrom, setStartFrom] = useState("layout");
+  const [orientation, setOrientation] = useState("landscape");
+  const [ownTemplate, setOwnTemplate] = useState(null); // { image, pageWidth, pageHeight, pageCount }
+
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const changeCourse = (courseId) => {
@@ -46,10 +53,25 @@ function CertificateFormModal({ courses, editing, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.courseId || !form.title.trim()) return;
+    if (!editing && startFrom === "own" && !ownTemplate) return;
     const { courseId, ...fields } = form;
-    // A new certificate starts from the default layout (the API requires a
-    // template); edits keep the existing design.
-    const certificate = editing ? fields : { ...fields, template: defaultTemplate(fields) };
+    // The API requires a template; edits keep the existing design. An own
+    // template starts with just the learner's name, ready to position.
+    const template =
+      startFrom === "own" && ownTemplate
+        ? {
+            background: {
+              color: "#ffffff",
+              image: ownTemplate.image,
+              pageWidth: ownTemplate.pageWidth,
+              pageHeight: ownTemplate.pageHeight,
+              border: false,
+              fromTemplate: true,
+            },
+            elements: [textElement({ text: "{{learner_name}}", y: 50, width: 70, fontSize: 40, bold: true, fontFamily: "serif" })],
+          }
+        : defaultTemplate(fields, orientation);
+    const certificate = editing ? fields : { ...fields, template };
     const course = courses.find((c) => c.id === courseId);
     const ok = await run(saveCourseCertificate({ courseId, certificate }), {
       successMessage: editing ? "Certificate updated." : `Certificate created and linked to "${course?.title}".`,
@@ -101,9 +123,67 @@ function CertificateFormModal({ courses, editing, onClose }) {
             />
           </div>
           {!editing && (
-            <p className="rounded-lg bg-brand-50 px-3 py-2 text-[11px] text-brand-800">
-              Next you'll open the designer to lay out the certificate, add signatures and images.
-            </p>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-stone-600">Start from</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["layout", "AFENET layout"],
+                  ["own", "My own template"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStartFrom(value)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                      startFrom === value ? "border-brand-600 bg-brand-50 text-brand-800" : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {startFrom === "layout" && (
+                <div className="mt-2">
+                  <label className="mb-1.5 block text-xs font-semibold text-stone-600">Orientation</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ["landscape", "Landscape"],
+                      ["portrait", "Portrait"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setOrientation(value)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                          orientation === value ? "border-brand-600 bg-brand-50 text-brand-800" : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {startFrom === "own" && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-stone-500">
+                    Upload a finished certificate design as PNG, JPG or PDF. For a PDF, only the first page is used. You'll then place the
+                    learner's name, course and date on it in the designer.
+                  </p>
+                  {ownTemplate && (
+                    <img src={ownTemplate.image} alt="Your template" className="max-h-40 w-full rounded-lg border border-stone-200 object-contain" />
+                  )}
+                  <TemplateUploadButton
+                    label={ownTemplate ? "Use a different file" : "Upload template (image or PDF)"}
+                    onUploaded={setOwnTemplate}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:opacity-60"
+                  />
+                </div>
+              )}
+              <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-[11px] text-brand-800">
+                Next you'll open the designer to place fields, signatures and images.
+              </p>
+            </div>
           )}
         </div>
 
@@ -111,7 +191,7 @@ function CertificateFormModal({ courses, editing, onClose }) {
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-100">
             Cancel
           </button>
-          <button type="submit" disabled={saving} className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+          <button type="submit" disabled={saving || (!editing && startFrom === "own" && !ownTemplate)} className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
             {editing ? "Save changes" : "Create certificate"}
           </button>
         </div>

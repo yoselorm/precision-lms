@@ -2,7 +2,33 @@ import React, { useRef, useState } from "react";
 import { Download, FileDown, Loader2, X } from "lucide-react";
 import CertificateCanvas, { CertificatePage } from "./CertificateCanvas";
 import ModalOverlay from "./ModalOverlay";
-import { PAGE_WIDTH, PAGE_HEIGHT, getTemplate, formatCertificateDate } from "../utils/certificateTemplate";
+import { getPageSize, getTemplate, formatCertificateDate, resolveImageSrc } from "../utils/certificateTemplate";
+
+// Downloads redraw the page into an image, and that step can't reliably load
+// images from storage/CDN URLs itself — so fetch them here and inline them as
+// data URLs on the copy of the template being exported.
+async function toDataUrl(src) {
+  if (!src || src.startsWith("data:")) return src;
+  const res = await fetch(src, { mode: "cors", cache: "no-store" });
+  if (!res.ok) throw new Error(`Couldn't load ${src}`);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function inlineImages(template) {
+  const image = template.background?.image ? await toDataUrl(template.background.image) : template.background?.image;
+  const elements = await Promise.all(
+    (template.elements || []).map(async (el) => (el.src ? { ...el, src: await toDataUrl(resolveImageSrc(el.src)) } : el))
+  );
+  return { ...template, background: { ...template.background, image }, elements };
+}
+
+const nextPaint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
 // Shows a course's certificate filled in for one learner, with PNG and PDF
 // downloads. Downloads are rendered from a full-size copy of the page kept
@@ -10,8 +36,12 @@ import { PAGE_WIDTH, PAGE_HEIGHT, getTemplate, formatCertificateDate } from "../
 export default function CertificateView({ certificate, learnerName, courseTitle, completedAt, onClose }) {
   const exportRef = useRef(null);
   const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
 
   const template = getTemplate(certificate);
+  // What the off-screen export copy renders — swapped for an inlined version
+  // just before each download.
+  const [exportTemplate, setExportTemplate] = useState(template);
   const data = {
     learnerName,
     courseTitle,
@@ -23,9 +53,13 @@ export default function CertificateView({ certificate, learnerName, courseTitle,
 
   const download = async (format) => {
     setBusy(format);
+    setError("");
     try {
+      setExportTemplate(await inlineImages(template));
+      await nextPaint();
       const { toPng, toJpeg } = await import("html-to-image");
-      const options = { pixelRatio: 2, width: PAGE_WIDTH, height: PAGE_HEIGHT };
+      const { width, height } = getPageSize(template);
+      const options = { pixelRatio: 2, width, height };
       if (format === "png") {
         const link = document.createElement("a");
         link.href = await toPng(exportRef.current, options);
@@ -35,10 +69,12 @@ export default function CertificateView({ certificate, learnerName, courseTitle,
         // JPEG keeps the PDF small; jsPDF embeds PNGs uncompressed.
         const jpeg = await toJpeg(exportRef.current, { ...options, quality: 0.92, backgroundColor: "#ffffff" });
         const { jsPDF } = await import("jspdf");
-        const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [PAGE_WIDTH, PAGE_HEIGHT], hotfixes: ["px_scaling"] });
-        pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+        const pdf = new jsPDF({ orientation: width >= height ? "landscape" : "portrait", unit: "px", format: [width, height], hotfixes: ["px_scaling"] });
+        pdf.addImage(jpeg, "JPEG", 0, 0, width, height);
         pdf.save(`${fileName}.pdf`);
       }
+    } catch {
+      setError("Couldn't prepare the download — check your connection and try again.");
     } finally {
       setBusy(null);
     }
@@ -66,13 +102,12 @@ export default function CertificateView({ certificate, learnerName, courseTitle,
             <X size={20} />
           </button>
         </div>
-        <div className="overflow-hidden rounded-xl shadow-2xl">
-          <CertificateCanvas template={template} data={data} />
-        </div>
+        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+        <CertificateCanvas template={template} data={data} maxHeight="calc(100vh - 7rem)" className="overflow-hidden rounded-xl shadow-2xl" />
       </div>
 
       <div aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0 }}>
-        <CertificatePage ref={exportRef} template={template} data={data} />
+        <CertificatePage ref={exportRef} template={exportTemplate} data={data} />
       </div>
     </ModalOverlay>
   );

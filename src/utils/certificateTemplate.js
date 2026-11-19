@@ -7,6 +7,29 @@ import afenetLogo from "../assets/images/afenet-logo.jpeg";
 export const PAGE_WIDTH = 1100;
 export const PAGE_HEIGHT = 778;
 
+// Templates built on an uploaded design take that design's proportions
+// (stored on the background, since that's what the API keeps as JSON);
+// everything else uses the standard landscape page. The long side stays
+// PAGE_WIDTH so font sizes mean the same thing on every template.
+export function getPageSize(template) {
+  const bg = template?.background || {};
+  return bg.pageWidth && bg.pageHeight ? { width: bg.pageWidth, height: bg.pageHeight } : { width: PAGE_WIDTH, height: PAGE_HEIGHT };
+}
+
+// Standard page in either orientation (uploaded templates set their own).
+export const PORTRAIT_PAGE = { pageWidth: PAGE_HEIGHT, pageHeight: PAGE_WIDTH };
+export const orientationOf = (template) => {
+  const { width, height } = getPageSize(template);
+  return height > width ? "portrait" : "landscape";
+};
+
+export function pageSizeFor(imageWidth, imageHeight) {
+  const ratio = imageHeight / imageWidth;
+  return ratio <= 1
+    ? { pageWidth: PAGE_WIDTH, pageHeight: Math.round(PAGE_WIDTH * ratio) }
+    : { pageWidth: Math.round(PAGE_WIDTH / ratio), pageHeight: PAGE_WIDTH };
+}
+
 // Dynamic values filled in per learner when a certificate is shown.
 export const PLACEHOLDERS = [
   { token: "{{learner_name}}", label: "Learner name" },
@@ -52,6 +75,13 @@ export function imageElement(src, overrides = {}) {
   return { id: newElementId(), type: "image", src, x: 50, y: 50, width: 18, ...overrides };
 }
 
+// A plain rectangle — used to cover text that's printed on an uploaded
+// template (e.g. a sample name) so a field can sit on top. Height is a
+// percentage of the page height, like width is of the page width.
+export function boxElement(overrides = {}) {
+  return { id: newElementId(), type: "box", color: "#ffffff", x: 50, y: 50, width: 30, height: 8, ...overrides };
+}
+
 export function signatureElement(overrides = {}) {
   return {
     id: newElementId(),
@@ -68,7 +98,9 @@ export function signatureElement(overrides = {}) {
 
 // Layout used for certificates that haven't been customised yet — built
 // from the certificate's basic fields so older certificates keep working.
-export function defaultTemplate(certificate = {}) {
+// Portrait stacks the same content down a taller, narrower page.
+export function defaultTemplate(certificate = {}, orientation = "landscape") {
+  if (orientation === "portrait") return portraitTemplate(certificate);
   const elements = [
     imageElement("builtin:afenet-logo", { x: 50, y: 13, width: 20 }),
     textElement({ text: "{{certificate_title}}", y: 27, width: 80, fontSize: 15, bold: true, color: "#78716c" }),
@@ -87,6 +119,29 @@ export function defaultTemplate(certificate = {}) {
   }
   return {
     background: { color: "#ffffff", image: "", border: true, borderColor: "#21409A" },
+    elements,
+  };
+}
+
+function portraitTemplate(certificate) {
+  const elements = [
+    imageElement("builtin:afenet-logo", { x: 50, y: 11, width: 32 }),
+    textElement({ text: "{{certificate_title}}", y: 23, width: 84, fontSize: 15, bold: true, color: "#78716c" }),
+    textElement({ text: "This is to certify that", y: 33, width: 84, fontSize: 18, color: "#57534e", fontFamily: "serif", italic: true }),
+    textElement({ text: "{{learner_name}}", y: 42, width: 86, fontSize: 40, bold: true, color: "#17295D", fontFamily: "serif" }),
+    textElement({ text: "has successfully completed", y: 51, width: 84, fontSize: 18, color: "#57534e", fontFamily: "serif", italic: true }),
+    textElement({ text: "{{course_title}}", y: 59, width: 84, fontSize: 26, bold: true, color: "#21409A" }),
+    textElement({ text: "Issued {{completion_date}}", y: 67, width: 84, fontSize: 14, color: "#78716c" }),
+    textElement({ text: "{{issuer}}", x: 70, y: 86, width: 40, fontSize: 15, bold: true, color: "#44403c" }),
+    textElement({ text: "Issued by", x: 70, y: 89, width: 40, fontSize: 12, color: "#a8a29e" }),
+  ];
+  if (certificate.signatoryName) {
+    elements.push(
+      signatureElement({ x: 30, y: 86, width: 36, name: certificate.signatoryName, title: certificate.signatoryTitle || "Signatory" })
+    );
+  }
+  return {
+    background: { color: "#ffffff", image: "", border: true, borderColor: "#21409A", ...PORTRAIT_PAGE },
     elements,
   };
 }
