@@ -16,6 +16,7 @@ import TopicComments from "../components/TopicComments";
 import GuardedVideo from "../components/GuardedVideo";
 import { pushToast } from "../store/slices/uiSlice";
 import { COMPLETE_SHARE } from "../utils/watchProgress";
+import { quizKey, quizRoute } from "../utils/quiz";
 import { usePageData } from "../hooks/usePageData";
 import { loadCoursePage } from "../store/loadAppData";
 
@@ -80,15 +81,23 @@ export default function CoursePlayer({ onMenuClick }) {
     if (enrollmentId) dispatch(fetchEnrollment({ enrollmentId }));
   }, [dispatch, enrollmentId]);
 
-  // Every item in play order: each topic's lessons, then its quiz.
-  const items = useMemo(
-    () =>
-      topics.flatMap((t) => [
-        ...t.lessons.map((l) => ({ id: l.id, kind: "lesson", title: l.title })),
-        ...(t.quiz?.questions?.length ? [{ id: `${t.id}__quiz`, kind: "quiz", title: "Knowledge check" }] : []),
+  // Every item in play order: each lesson (followed by its own quiz, if
+  // any), each topic's quiz after its lessons, and the course's quiz last.
+  const courseQuiz = course?.quiz;
+  const items = useMemo(() => {
+    const quizItem = (owner, quiz, title, topicId) =>
+      quiz?.questions?.length ? [{ id: `${owner.id}__quiz`, kind: "quiz", owner, quiz, title, topicId }] : [];
+    return [
+      ...topics.flatMap((t) => [
+        ...t.lessons.flatMap((l) => [
+          { id: l.id, kind: "lesson", title: l.title },
+          ...quizItem({ type: "lesson", id: l.id }, l.quiz, "Lesson quiz", t.id),
+        ]),
+        ...quizItem({ type: "topic", id: t.id }, t.quiz, "Knowledge check", t.id),
       ]),
-    [topics]
-  );
+      ...quizItem({ type: "course", id: courseId }, courseQuiz, "Final quiz", null),
+    ];
+  }, [topics, courseQuiz, courseId]);
   const completedIds = enrollment?.completedModuleIds ?? NO_IDS;
   // Open at the first unfinished lesson, so learners pick up where they left off.
   const startItemId = useMemo(
@@ -105,15 +114,16 @@ export default function CoursePlayer({ onMenuClick }) {
   const [eligibleIds, setEligibleIds] = useState([]);
   const [nextUpId, setNextUpId] = useState(null);
 
-  const { activeTopic, activeLesson, isQuizActive } = useMemo(() => {
+  const { activeTopic, activeLesson, activeQuiz } = useMemo(() => {
     if (!course) return {};
+    const quizItem = items.find((i) => i.kind === "quiz" && i.id === activeItemId);
+    if (quizItem) return { activeTopic: topics.find((t) => t.id === quizItem.topicId) ?? null, activeLesson: null, activeQuiz: quizItem };
     for (const topic of topics) {
       const lesson = topic.lessons.find((l) => l.id === activeItemId);
-      if (lesson) return { activeTopic: topic, activeLesson: lesson, isQuizActive: false };
-      if (activeItemId === `${topic.id}__quiz`) return { activeTopic: topic, activeLesson: null, isQuizActive: true };
+      if (lesson) return { activeTopic: topic, activeLesson: lesson, activeQuiz: null };
     }
     return {};
-  }, [course, topics, activeItemId]);
+  }, [course, topics, items, activeItemId]);
 
   if (!course && (coursesStatus === "idle" || coursesStatus === "loading")) {
     return (
@@ -262,24 +272,26 @@ export default function CoursePlayer({ onMenuClick }) {
                 : "No topics yet."}
             </p>
           )}
-          {topics.map((topic) => {
-            const hasQuiz = (topic.quiz?.questions?.length ?? 0) > 0;
-            const quizId = `${topic.id}__quiz`;
-            return (
-              <div key={topic.id}>
-                <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">{topic.title}</p>
-                <div className="space-y-1">
-                  {topic.lessons.map((lesson) => {
-                    const Icon = LESSON_ICONS[lesson.type] || FileText;
-                    const done = isItemComplete(lesson.id);
-                    const active = lesson.id === activeItemId;
-                    const locked = !isUnlocked(lesson.id);
+          {topics.map((topic) => (
+            <div key={topic.id}>
+              <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">{topic.title}</p>
+              <div className="space-y-1">
+                {items
+                  .filter((item) => (item.kind === "quiz" ? item.topicId === topic.id : topic.lessons.some((l) => l.id === item.id)))
+                  .map((item) => {
+                    const lesson = item.kind === "lesson" ? topic.lessons.find((l) => l.id === item.id) : null;
+                    const Icon = lesson ? LESSON_ICONS[lesson.type] || FileText : HelpCircle;
+                    const done = isItemComplete(item.id);
+                    const active = item.id === activeItemId;
+                    const locked = !isUnlocked(item.id);
                     return (
                       <button
-                        key={lesson.id}
-                        onClick={() => switchItem(lesson.id)}
+                        key={item.id}
+                        onClick={() => switchItem(item.id)}
                         title={locked ? "Finish the previous lesson to unlock" : undefined}
                         className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
+                          lesson ? "" : "pl-5"
+                        } ${
                           active
                             ? "bg-brand-50 text-brand-800 font-semibold"
                             : locked
@@ -295,39 +307,37 @@ export default function CoursePlayer({ onMenuClick }) {
                           <Circle size={15} className="shrink-0 text-stone-300" />
                         )}
                         <Icon size={13} className="shrink-0 text-stone-400" />
-                        <span className="flex-1">{lesson.title}</span>
-                        <span className="text-[10px] text-stone-400">{lesson.durationMins}m</span>
+                        <span className="flex-1">{item.title}</span>
+                        {lesson && <span className="text-[10px] text-stone-400">{lesson.durationMins}m</span>}
                       </button>
                     );
                   })}
-
-                  {hasQuiz && (
-                    <button
-                      onClick={() => switchItem(quizId)}
-                      title={!isUnlocked(quizId) ? "Finish this topic's lessons to unlock" : undefined}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition ${
-                        activeItemId === quizId
-                          ? "bg-brand-50 text-brand-800 font-semibold"
-                          : !isUnlocked(quizId)
-                          ? "cursor-not-allowed text-stone-400"
-                          : "text-stone-600 hover:bg-stone-50"
-                      }`}
-                    >
-                      {isItemComplete(quizId) ? (
-                        <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
-                      ) : !isUnlocked(quizId) ? (
-                        <Lock size={14} className="shrink-0 text-stone-300" />
-                      ) : (
-                        <Circle size={15} className="shrink-0 text-stone-300" />
-                      )}
-                      <HelpCircle size={13} className="shrink-0 text-stone-400" />
-                      <span className="flex-1">Knowledge check</span>
-                    </button>
-                  )}
-                </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
+
+          {items
+            .filter((item) => item.owner?.type === "course")
+            .map((item) => {
+              const locked = !isUnlocked(item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => switchItem(item.id)}
+                  title={locked ? "Finish all the lessons to unlock the final quiz" : undefined}
+                  className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-xs transition ${
+                    item.id === activeItemId
+                      ? "border-brand-300 bg-brand-50 font-semibold text-brand-800"
+                      : locked
+                      ? "cursor-not-allowed border-stone-200 text-stone-400"
+                      : "border-stone-200 text-stone-700 hover:bg-stone-50"
+                  }`}
+                >
+                  {locked ? <Lock size={14} className="shrink-0 text-stone-300" /> : <Award size={15} className="shrink-0 text-brand-700" />}
+                  <span className="flex-1">Final quiz</span>
+                </button>
+              );
+            })}
 
           {courseAssignments.length > 0 && (
             <button
@@ -468,24 +478,24 @@ export default function CoursePlayer({ onMenuClick }) {
           </div>
         )}
 
-        {isQuizActive && activeTopic && (
+        {activeQuiz && (
           <div className="mx-auto max-w-2xl space-y-5">
             {isLearner ? (
               <QuizIntroCard
-                quiz={activeTopic.quiz}
-                attempts={enrollment?.topicQuizzes?.[activeTopic.id]?.attempts}
-                heading={activeTopic.quiz.title || "Knowledge check"}
-                subheading={activeTopic.title}
-                onStart={() => navigate(`/course/${course.id}/topic/${activeTopic.id}/quiz`)}
+                quiz={activeQuiz.quiz}
+                attempts={enrollment?.topicQuizzes?.[quizKey(activeQuiz.owner)]?.attempts}
+                heading={activeQuiz.quiz.title || activeQuiz.title}
+                subheading={activeQuiz.owner.type === "course" ? course.title : activeQuiz.owner.type === "topic" ? activeTopic?.title : items.find((i) => i.id === activeQuiz.owner.id)?.title}
+                onStart={() => navigate(quizRoute(course.id, activeQuiz.owner))}
               />
             ) : (
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Quiz preview · answers shown</span>
-                <h1 className="mb-4 text-xl font-bold text-stone-900">{activeTopic.quiz.title || "Knowledge check"}</h1>
-                <QuizPreview quiz={activeTopic.quiz} />
+                <h1 className="mb-4 text-xl font-bold text-stone-900">{activeQuiz.quiz.title || activeQuiz.title}</h1>
+                <QuizPreview quiz={activeQuiz.quiz} />
               </div>
             )}
-            <TopicComments courseId={course.id} topicId={activeTopic.id} />
+            {activeTopic && <TopicComments courseId={course.id} topicId={activeTopic.id} />}
           </div>
         )}
       </div>

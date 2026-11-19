@@ -8,26 +8,30 @@ import { selectCourseById } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectEnrollment, submitQuizScore } from "../store/slices/enrollmentsSlice";
 import { pushToast } from "../store/slices/uiSlice";
-import { getTopicQuiz } from "../api/courses";
+import { getQuiz } from "../api/courses";
 import { normalizeQuiz } from "../api/normalize";
 import { quizAttemptHandlers } from "../utils/quizAttempts";
+import { quizKey } from "../utils/quiz";
 
-// A topic's quiz gets its own focused page — reached only from the "Start
-// quiz" button on the course player (CoursePlayer shows QuizIntroCard for
-// the "Knowledge check" item instead of the quiz itself).
+// A course, topic or lesson quiz gets its own focused page — reached from
+// the "Start quiz" button on the course player. The URL says which:
+// /course/:courseId/quiz, …/topic/:topicId/quiz or …/lesson/:lessonId/quiz.
 export default function CourseQuizPage({ onMenuClick }) {
-  const { courseId, topicId } = useParams();
+  const { courseId, topicId, lessonId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const owner = topicId ? { type: "topic", id: topicId } : lessonId ? { type: "lesson", id: lessonId } : { type: "course", id: courseId };
 
   const course = useSelector((state) => selectCourseById(state, courseId));
   const currentUser = useSelector(selectCurrentUser);
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
 
-  const knownTopic = (course?.revision?.topics ?? course?.topics ?? []).find((t) => t.id === topicId);
+  const topics = course?.revision?.topics ?? course?.topics ?? [];
+  const knownTopic = topics.find((t) => t.id === topicId);
+  const knownLesson = topics.flatMap((t) => t.lessons).find((l) => l.id === lessonId);
+  const ownerTitle = owner.type === "course" ? "Final quiz" : (knownTopic ?? knownLesson)?.title;
 
-  // Learners can't list a course's topics from the API, but they can read
-  // a topic's quiz by id — so load it straight from the URL's topic.
+  // Load the quiz straight from the URL's owner.
   const [quizState, setQuizState] = useState({ status: "loading", quiz: null });
   const canRead = currentUser?.role === "learner" || currentUser?.role === "trainer";
   useEffect(() => {
@@ -37,19 +41,28 @@ export default function CourseQuizPage({ onMenuClick }) {
       return;
     }
     let cancelled = false;
-    getTopicQuiz(topicId)
+    getQuiz(owner)
       .then((q) => !cancelled && setQuizState({ status: "ready", quiz: normalizeQuiz(q) }))
       .catch(() => !cancelled && setQuizState({ status: "ready", quiz: null }));
     return () => {
       cancelled = true;
     };
-  }, [topicId, canRead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner.type, owner.id, canRead]);
   const quiz = quizState.quiz;
-  const topic = knownTopic ?? { id: topicId, title: quiz?.title || "Topic quiz" };
+  const key = quizKey(owner);
+  const subheading = ownerTitle || quiz?.title || "Quiz";
 
   const handlers = useMemo(
-    () => quiz && quizAttemptHandlers({ topicId }, quiz, (message) => dispatch(pushToast({ type: "error", message }))),
-    [quiz, topicId, dispatch]
+    () =>
+      quiz &&
+      quizAttemptHandlers(
+        owner.type === "topic" ? { topicId } : owner.type === "lesson" ? { lessonId } : { courseId },
+        quiz,
+        (message) => dispatch(pushToast({ type: "error", message }))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [quiz, owner.type, owner.id, dispatch]
   );
 
   if (quizState.status === "loading" && course && currentUser) {
@@ -87,7 +100,7 @@ export default function CourseQuizPage({ onMenuClick }) {
   if (!hasQuiz) {
     return (
       <div className="flex h-full flex-1 items-center justify-center text-sm text-stone-400">
-        This topic doesn't have a quiz.{" "}
+        This {owner.type} doesn't have a quiz.{" "}
         <button className="ml-2 underline" onClick={() => navigate(`/course/${courseId}`)}>
           Back to course
         </button>
@@ -96,9 +109,9 @@ export default function CourseQuizPage({ onMenuClick }) {
   }
 
   const handleSubmit = (score, passed, timedOut) => {
-    const previousAttempts = enrollment?.topicQuizzes?.[topic.id]?.attempts?.length ?? 0;
+    const previousAttempts = enrollment?.topicQuizzes?.[key]?.attempts?.length ?? 0;
     const wasLastAttempt = !!quiz.maxAttempts && previousAttempts + 1 >= quiz.maxAttempts;
-    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: topic.id, score, passingScore: quiz.passingScore, passed }));
+    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: key, score, passingScore: quiz.passingScore, passed }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",
@@ -113,7 +126,7 @@ export default function CourseQuizPage({ onMenuClick }) {
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title="Knowledge check" subtitle={`${course.title} · ${topic.title}`} onMenuClick={onMenuClick} />
+      <Header title={owner.type === "course" ? "Final quiz" : "Knowledge check"} subtitle={`${course.title} · ${subheading}`} onMenuClick={onMenuClick} />
       <div className="mx-auto w-full max-w-2xl space-y-5 p-4 sm:p-6 lg:p-8">
         <button
           onClick={() => navigate(`/course/${courseId}`)}
@@ -123,9 +136,9 @@ export default function CourseQuizPage({ onMenuClick }) {
         </button>
         <QuizTaker
           quiz={quiz}
-          attempts={enrollment?.topicQuizzes?.[topic.id]?.attempts}
-          heading="Knowledge check"
-          subheading={topic.title}
+          attempts={enrollment?.topicQuizzes?.[key]?.attempts}
+          heading={owner.type === "course" ? "Final quiz" : "Knowledge check"}
+          subheading={subheading}
           onSubmit={handleSubmit}
           onBack={() => navigate(`/course/${courseId}`)}
           backLabel="Back to course"

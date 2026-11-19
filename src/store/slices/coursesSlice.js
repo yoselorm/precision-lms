@@ -26,17 +26,26 @@ export const fetchCourses = listThunk("courses/fetch", async (_, { getState }) =
   return [...byId.values()];
 });
 
-// Topic quizzes only have a user-side read (without correct answers);
-// a 404 just means the topic has no quiz.
+// A course, topic or lesson's quiz, or null — a 404 just means it has none
+// (or, for course/lesson quizzes, that the server doesn't offer them yet).
+async function loadQuiz(owner) {
+  try {
+    return normalizeQuiz(await coursesApi.getQuiz(owner));
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 405)) return null;
+    throw err;
+  }
+}
+
+// User-side reads (learner view, or with answers for the owning trainer).
 async function loadQuizzes(topics) {
   return Promise.all(
     topics.map(async (topic) => {
-      try {
-        return { ...topic, quiz: normalizeQuiz(await coursesApi.getTopicQuiz(topic.id)) };
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) return topic;
-        throw err;
-      }
+      const [quiz, lessons] = await Promise.all([
+        loadQuiz({ type: "topic", id: topic.id }),
+        Promise.all(topic.lessons.map(async (lesson) => ({ ...lesson, quiz: await loadQuiz({ type: "lesson", id: lesson.id }) }))),
+      ]);
+      return { ...topic, quiz, lessons };
     })
   );
 }
@@ -45,6 +54,20 @@ async function loadQuizzes(topics) {
 // class model) and id.
 export const isTopicQuiz = (q) => /topic$/i.test(q.owner_type || "");
 export const isClassQuiz = (q) => /class$/i.test(q.owner_type || "");
+export const isCourseQuiz = (q) => /course$/i.test(q.owner_type || "");
+export const isLessonQuiz = (q) => /lesson$/i.test(q.owner_type || "");
+
+// Attaches admin-list quizzes to a course's topics and lessons.
+function attachAdminQuizzes(topics, quizzes) {
+  const byOwner = (test) => new Map(quizzes.filter(test).map((q) => [q.owner_id, q]));
+  const topicQuizzes = byOwner(isTopicQuiz);
+  const lessonQuizzes = byOwner(isLessonQuiz);
+  return topics.map((t) => ({
+    ...t,
+    quiz: normalizeQuiz(topicQuizzes.get(t.id)),
+    lessons: t.lessons.map((l) => ({ ...l, quiz: normalizeQuiz(lessonQuizzes.get(l.id)) })),
+  }));
+}
 
 // Admin: every quiz with its answers — attached to loaded topics here and to
 // classes in the classes slice.
@@ -62,14 +85,15 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
 
   if (guard === "admin") {
     const [apiTopics, quizzes] = await Promise.all([coursesApi.listTopics("admin", courseId), coursesApi.listAdminQuizzes()]);
-    const byTopic = new Map(quizzes.filter(isTopicQuiz).map((q) => [q.owner_id, q]));
-    const topics = apiTopics.map(normalizeTopic).map((t) => ({ ...t, quiz: normalizeQuiz(byTopic.get(t.id)) }));
-    return { courseId, topics, revision: null };
+    const topics = attachAdminQuizzes(apiTopics.map(normalizeTopic), quizzes);
+    const courseQuiz = normalizeQuiz(quizzes.find((q) => isCourseQuiz(q) && q.owner_id === courseId));
+    return { courseId, topics, courseQuiz, revision: null };
   }
   if (!course || course.createdBy !== user?.id) {
     try {
       const topics = (await coursesApi.getCourseContent(courseId)).map(normalizeTopic);
-      return { courseId, topics: await loadQuizzes(topics), revision: null };
+      const [withQuizzes, courseQuiz] = await Promise.all([loadQuizzes(topics), loadQuiz({ type: "course", id: courseId })]);
+      return { courseId, topics: withQuizzes, courseQuiz, revision: null };
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         return { courseId, unavailable: "Enroll in this course to see its lessons." };
@@ -88,13 +112,17 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
       if (!(err instanceof ApiError && err.status === 404)) throw err;
     }
     // Live content (what learners see), for previewing the course.
-    const live = await loadQuizzes((await coursesApi.getCourseContent(courseId)).map(normalizeTopic));
-    if (!revision) return { courseId, topics: live, revision: null };
+    const [live, courseQuiz] = await Promise.all([
+      coursesApi.getCourseContent(courseId).then((t) => loadQuizzes(t.map(normalizeTopic))),
+      loadQuiz({ type: "course", id: courseId }),
+    ]);
+    if (!revision) return { courseId, topics: live, courseQuiz, revision: null };
     const normalized = normalizeRevision(revision);
-    return { courseId, topics: live, revision: { ...normalized, topics: await loadQuizzes(normalized.topics) } };
+    return { courseId, topics: live, courseQuiz, revision: { ...normalized, topics: await loadQuizzes(normalized.topics) } };
   }
   const topics = (await coursesApi.listTopics("user", courseId)).map(normalizeTopic);
-  return { courseId, topics: await loadQuizzes(topics), revision: null };
+  const [withQuizzes, courseQuiz] = await Promise.all([loadQuizzes(topics), loadQuiz({ type: "course", id: courseId })]);
+  return { courseId, topics: withQuizzes, courseQuiz, revision: null };
 });
 
 export const createCourse = apiThunk("courses/create", (form, { getState }) => {
@@ -164,12 +192,26 @@ export const addLesson = contentEdit("courses/addLesson", ({ topicId, ...lesson 
 
 export const removeLesson = contentEdit("courses/removeLesson", ({ lessonId }, guard) => coursesApi.deleteLesson(guard, lessonId));
 
-export const saveTopicQuiz = contentEdit("courses/saveTopicQuiz", ({ topicId, quiz }, guard) =>
-  coursesApi.saveTopicQuiz(guard, topicId, quizToApi(quiz))
+// Course and lesson quiz routes may not exist on the server yet — say so
+// plainly instead of "The route … could not be found".
+async function quizRequest(owner, call) {
+  try {
+    return await call();
+  } catch (err) {
+    if (owner.type !== "topic" && err instanceof ApiError && (err.status === 405 || (err.status === 404 && /could not be found/i.test(err.message)))) {
+      throw new Error(`${owner.type === "course" ? "Course" : "Lesson"} quizzes aren't available on the server yet — the backend needs to add them.`);
+    }
+    throw err;
+  }
+}
+
+// owner: { type: "course" | "topic" | "lesson", id }.
+export const saveQuiz = contentEdit("courses/saveQuiz", ({ owner, quiz }, guard) =>
+  quizRequest(owner, () => coursesApi.saveQuiz(guard, owner, quizToApi(quiz)))
 );
 
-export const removeTopicQuiz = contentEdit("courses/removeTopicQuiz", ({ topicId }, guard) =>
-  coursesApi.deleteTopicQuiz(guard, topicId)
+export const removeQuiz = contentEdit("courses/removeQuiz", ({ owner }, guard) =>
+  quizRequest(owner, () => coursesApi.deleteQuiz(guard, owner))
 );
 
 // ── Trainer updates to a live course ──
@@ -202,6 +244,7 @@ function upsert(state, apiCourse) {
   state.courses[index] = {
     ...incoming,
     topics: existing.topics,
+    quiz: existing.quiz,
     revision: existing.revision,
     certificate: existing.certificate,
     contentStatus: existing.contentStatus,
@@ -240,7 +283,7 @@ const coursesSlice = createSlice({
         if (course && course.contentStatus === "idle") course.contentStatus = "loading";
       })
       .addCase(fetchCourseContent.fulfilled, (state, action) => {
-        const { courseId, topics, revision, unavailable } = action.payload;
+        const { courseId, topics, revision, unavailable, courseQuiz } = action.payload;
         const index = state.courses.findIndex((c) => c.id === courseId);
         if (index === -1) return;
         if (unavailable) {
@@ -250,7 +293,13 @@ const coursesSlice = createSlice({
         }
         const sorted = [...topics].sort((a, b) => a.sortOrder - b.sortOrder);
         const sortedRevision = revision && { ...revision, topics: [...revision.topics].sort((a, b) => a.sortOrder - b.sortOrder) };
-        state.courses[index] = { ...withTopics(state.courses[index], sorted), revision: sortedRevision, contentStatus: "succeeded", contentError: null };
+        state.courses[index] = {
+          ...withTopics(state.courses[index], sorted),
+          quiz: courseQuiz ?? null,
+          revision: sortedRevision,
+          contentStatus: "succeeded",
+          contentError: null,
+        };
       })
       .addCase(fetchCourseContent.rejected, (state, action) => {
         const course = state.courses.find((c) => c.id === action.meta.arg);
@@ -274,12 +323,10 @@ const coursesSlice = createSlice({
         state.courses = state.courses.filter((c) => c.id !== action.payload.courseId);
       })
       .addCase(fetchAdminQuizzes.fulfilled, (state, action) => {
-        const byTopic = new Map(action.payload.filter(isTopicQuiz).map((q) => [q.owner_id, q]));
-        state.courses.forEach((course) =>
-          course.topics.forEach((topic) => {
-            topic.quiz = normalizeQuiz(byTopic.get(topic.id));
-          })
-        );
+        state.courses.forEach((course) => {
+          course.topics = attachAdminQuizzes(course.topics, action.payload);
+          course.quiz = normalizeQuiz(action.payload.find((q) => isCourseQuiz(q) && q.owner_id === course.id));
+        });
       })
       // Courses store their category by name, so follow admin renames.
       .addCase(updateCategory.fulfilled, (state, action) => {

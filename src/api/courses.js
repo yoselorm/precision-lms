@@ -103,6 +103,25 @@ export function listAdminQuizzes() {
   return adminQuizzesInFlight;
 }
 
+// Quizzes can belong to a course, a topic or a lesson — owner is
+// { type: "course" | "topic" | "lesson", id }. Course and lesson quizzes
+// follow the same routes as topic quizzes (/courses|/topics|/lessons/{id}/quiz).
+const QUIZ_OWNER_PATH = { course: "courses", topic: "topics", lesson: "lessons" };
+const quizPath = (guard, owner) => `${base(guard)}/${QUIZ_OWNER_PATH[owner.type]}/${owner.id}/quiz`;
+
+// User-side read: learner view, or with answers for the owning trainer.
+export function getQuiz(owner) {
+  return apiRequest(quizPath("user", owner));
+}
+
+export function saveQuiz(guard, owner, body) {
+  return apiRequest(quizPath(guard, owner), { method: "PUT", body });
+}
+
+export function deleteQuiz(guard, owner) {
+  return apiRequest(quizPath(guard, owner), { method: "DELETE" });
+}
+
 export function saveTopicQuiz(guard, topicId, body) {
   return apiRequest(`${base(guard)}/topics/${topicId}/quiz`, { method: "PUT", body });
 }

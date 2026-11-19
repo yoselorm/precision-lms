@@ -60,6 +60,8 @@ export function normalizeLesson(l) {
     body: l.body || "",
     fileUrl: l.file_url || "",
     sortOrder: l.sort_order ?? 0,
+    // Lesson quiz, loaded separately.
+    quiz: null,
     // Not modelled by the API — kept so lesson UIs that list extra
     // downloads still render.
     resources: [],
@@ -162,6 +164,8 @@ export function normalizeCourse(c) {
     review: null,
     revision: null,
     topics: [],
+    // Course-level quiz (e.g. a final assessment), loaded with the content.
+    quiz: null,
     // "idle" until the course's topics have been requested.
     contentStatus: "idle",
   };

@@ -88,8 +88,14 @@ export function deleteClassQuiz(classId) {
 }
 
 // ── Quiz attempts (topic or class quiz) ──
-export function startQuizAttempt({ topicId, classId }) {
-  const path = topicId ? `/v1/user/topics/${topicId}/quiz/attempts` : `/v1/user/classes/${classId}/quiz/attempts`;
+export function startQuizAttempt({ topicId, classId, courseId, lessonId }) {
+  const path = topicId
+    ? `/v1/user/topics/${topicId}/quiz/attempts`
+    : lessonId
+    ? `/v1/user/lessons/${lessonId}/quiz/attempts`
+    : courseId
+    ? `/v1/user/courses/${courseId}/quiz/attempts`
+    : `/v1/user/classes/${classId}/quiz/attempts`;
   return apiRequest(path, { method: "POST" });
 }
 

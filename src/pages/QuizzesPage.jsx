@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { BookOpen, CalendarDays, CheckCircle2, Clock, Eye, Pencil, Plus, Trash2, X } from "lucide-react";
+import { BookOpen, CalendarDays, CheckCircle2, Clock, Eye, Layers, Pencil, PlayCircle, Plus, Trash2, X } from "lucide-react";
 import Header from "../components/Header";
 import QuizBuilder from "../components/QuizBuilder";
 import QuizPreview from "../components/QuizPreview";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectAllCourses, saveTopicQuiz, removeTopicQuiz, editableTopicsOf, fetchCourseContent, fetchAdminQuizzes } from "../store/slices/coursesSlice";
+import { selectAllCourses, saveQuiz, removeQuiz, fetchCourseContent, fetchAdminQuizzes } from "../store/slices/coursesSlice";
 import { selectAllClasses, setClassQuiz, removeClassQuiz, fetchClass } from "../store/slices/classesSlice";
 import { useApiAction } from "../hooks/useApiAction";
 import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
@@ -15,32 +15,61 @@ import { useConfirm } from "../components/ConfirmDialog";
 import ModalOverlay from "../components/ModalOverlay";
 import { usePageData } from "../hooks/usePageData";
 import { loadQuizzes } from "../store/loadAppData";
+import { quizKey, quizRoute } from "../utils/quiz";
 
 const inputClass = "w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-brand-600";
 
 const TYPE_META = {
   course: { label: "Course", icon: BookOpen, pill: "border-brand-200 bg-brand-50 text-brand-700" },
+  topic: { label: "Topic", icon: Layers, pill: "border-sky-200 bg-sky-50 text-sky-700" },
+  lesson: { label: "Lesson", icon: PlayCircle, pill: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   class: { label: "Class", icon: CalendarDays, pill: "border-violet-200 bg-violet-50 text-violet-700" },
 };
 
 const hasQuestions = (quiz) => (quiz?.questions?.length ?? 0) > 0;
 
-// Flattens every quiz in the system into one list. Course quizzes live on a
-// course's topics; class quizzes live on the class itself.
+// Flattens every quiz in the system into one list. Quizzes can belong to a
+// whole course, one of its topics or lessons, or a class.
 function collectQuizzes(courses, classes) {
   const rows = [];
   courses.forEach((course) => {
-    course.topics.forEach((topic) => {
-      if (!hasQuestions(topic.quiz)) return;
+    if (hasQuestions(course.quiz)) {
       rows.push({
-        key: `course:${course.id}:${topic.id}`,
+        key: `course:${course.id}`,
         type: "course",
-        quiz: topic.quiz,
-        title: topic.quiz.title || `${topic.title} quiz`,
+        owner: { type: "course", id: course.id },
+        quiz: course.quiz,
+        title: course.quiz.title || `${course.title} final quiz`,
         belongsTo: course.title,
-        detail: topic.title,
+        detail: "Whole course",
         course,
-        topic,
+      });
+    }
+    course.topics.forEach((topic) => {
+      if (hasQuestions(topic.quiz)) {
+        rows.push({
+          key: `topic:${topic.id}`,
+          type: "topic",
+          owner: { type: "topic", id: topic.id },
+          quiz: topic.quiz,
+          title: topic.quiz.title || `${topic.title} quiz`,
+          belongsTo: course.title,
+          detail: topic.title,
+          course,
+        });
+      }
+      topic.lessons.forEach((lesson) => {
+        if (!hasQuestions(lesson.quiz)) return;
+        rows.push({
+          key: `lesson:${lesson.id}`,
+          type: "lesson",
+          owner: { type: "lesson", id: lesson.id },
+          quiz: lesson.quiz,
+          title: lesson.quiz.title || `${lesson.title} quiz`,
+          belongsTo: course.title,
+          detail: `${topic.title} › ${lesson.title}`,
+          course,
+        });
       });
     });
   });
@@ -88,22 +117,20 @@ function Tabs({ tabs, value, onChange }) {
 }
 
 // Create or edit a quiz. When creating, the author first picks what the quiz
-// belongs to — a topic within a course, or a particular class. When editing,
-// that target is fixed.
+// belongs to — a whole course, a topic or lesson within one, or a class.
+// When editing, that target is fixed.
 function QuizEditorModal({ courses, classes, editing, onClose }) {
   const [run, saving] = useApiAction();
   // Saved quizzes come back without their correct answers, so an edit
   // starts from a blank question list and replaces the quiz on save.
   const answersUnknown = !!editing && editing.quiz.answersKnown === false;
-  const courseOptions = courses.filter((c) => c.topics.length > 0);
-
-  const [type, setType] = useState(editing?.type || "course");
+  const [type, setType] = useState(editing?.type || "topic");
+  // Courses offered for each kind of quiz.
+  const courseOptions =
+    type === "course" ? courses : type === "lesson" ? courses.filter((c) => c.topics.some((t) => t.lessons.length)) : courses.filter((c) => c.topics.length);
   const [courseId, setCourseId] = useState(editing?.course?.id || courseOptions[0]?.id || "");
-  const [topicId, setTopicId] = useState(() => {
-    if (editing?.topic) return editing.topic.id;
-    const first = courseOptions[0];
-    return first?.topics.find((t) => !hasQuestions(t.quiz))?.id || "";
-  });
+  const [topicId, setTopicId] = useState("");
+  const [lessonId, setLessonId] = useState("");
   const freeClasses = classes.filter((c) => !hasQuestions(c.quiz));
   const [classId, setClassId] = useState(editing?.cls?.id || freeClasses[0]?.id || "");
 
@@ -116,23 +143,30 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
 
   const selectedCourse = courses.find((c) => c.id === courseId);
   const selectedTopics = selectedCourse?.topics || [];
+  const allLessons = selectedTopics.flatMap((t) => t.lessons.map((l) => ({ ...l, topicTitle: t.title })));
 
-  const changeCourse = (id) => {
-    setCourseId(id);
-    const course = courses.find((c) => c.id === id);
-    setTopicId(course?.topics.find((t) => !hasQuestions(t.quiz))?.id || "");
-  };
+  // Keep the topic/lesson pick valid for the chosen course, preferring ones
+  // without a quiz yet.
+  useEffect(() => {
+    if (editing) return;
+    if (!courseOptions.some((c) => c.id === courseId)) setCourseId(courseOptions[0]?.id || "");
+    setTopicId((current) => (selectedTopics.some((t) => t.id === current) ? current : selectedTopics.find((t) => !hasQuestions(t.quiz))?.id || ""));
+    setLessonId((current) => (allLessons.some((l) => l.id === current) ? current : allLessons.find((l) => !hasQuestions(l.quiz))?.id || ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, courseId, courses]);
 
-  const targetChosen = type === "course" ? !!(courseId && topicId) : !!classId;
+  const owner = editing?.owner ?? (type === "course" ? { type, id: courseId } : type === "topic" ? { type, id: topicId } : type === "lesson" ? { type, id: lessonId } : null);
+  const courseAlreadyHasQuiz = !editing && type === "course" && hasQuestions(selectedCourse?.quiz);
+  const targetChosen = type === "class" ? !!classId : !!owner?.id && !courseAlreadyHasQuiz;
   const canSave = targetChosen && questions.length > 0 && !saving;
 
   const handleSave = async () => {
     if (!canSave) return;
     const quiz = { title, passingScore, timeLimitMins, maxAttempts, showAnswers, questions };
-    const liveUpdate = type === "course" && !!selectedCourse?.isLiveForTrainer;
+    const liveUpdate = type !== "class" && !!selectedCourse?.isLiveForTrainer;
     const ok =
-      type === "course"
-        ? await run(saveTopicQuiz({ courseId, topicId, quiz }), {
+      type !== "class"
+        ? await run(saveQuiz({ courseId: editing?.course?.id ?? courseId, owner, quiz }), {
             successMessage: liveUpdate
               ? "Quiz saved to your course update — submit the update for approval from the course page."
               : editing
@@ -161,12 +195,12 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
                 <TypePill type={editing.type} />
                 <span className="truncate font-medium">
                   {editing.belongsTo}
-                  {editing.type === "course" && ` › ${editing.topic.title}`}
+                  {editing.type !== "class" && editing.type !== "course" && ` › ${editing.detail}`}
                 </span>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {["course", "class"].map((t) => {
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {["course", "topic", "lesson", "class"].map((t) => {
                   const Icon = TYPE_META[t].icon;
                   return (
                     <button
@@ -185,16 +219,20 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
             )}
           </div>
 
-          {!editing && type === "course" && (
+          {!editing && type !== "class" && (
             courseOptions.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-300 p-3 text-xs text-stone-400">
-                None of your courses have topics yet. Add a topic to a course first, then create its quiz here.
+                {type === "course"
+                  ? "You don't have any courses yet."
+                  : type === "topic"
+                  ? "None of your courses have topics yet. Add a topic to a course first, then create its quiz here."
+                  : "None of your courses have lessons yet. Add a lesson first, then create its quiz here."}
               </p>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className={`grid gap-3 ${type === "course" ? "" : "sm:grid-cols-2"}`}>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-stone-600">Course</label>
-                  <select value={courseId} onChange={(e) => changeCourse(e.target.value)} className={inputClass}>
+                  <select value={courseId} onChange={(e) => setCourseId(e.target.value)} className={inputClass}>
                     {courseOptions.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.title}
@@ -202,20 +240,42 @@ function QuizEditorModal({ courses, classes, editing, onClose }) {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-stone-600">Topic</label>
-                  <select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={inputClass}>
-                    {selectedTopics.every((t) => hasQuestions(t.quiz)) && <option value="">Every topic already has a quiz</option>}
-                    {selectedTopics.map((t) => (
-                      <option key={t.id} value={t.id} disabled={hasQuestions(t.quiz)}>
-                        {t.title}
-                        {hasQuestions(t.quiz) ? " (has a quiz)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {type === "topic" && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-stone-600">Topic</label>
+                    <select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={inputClass}>
+                      {selectedTopics.every((t) => hasQuestions(t.quiz)) && <option value="">Every topic already has a quiz</option>}
+                      {selectedTopics.map((t) => (
+                        <option key={t.id} value={t.id} disabled={hasQuestions(t.quiz)}>
+                          {t.title}
+                          {hasQuestions(t.quiz) ? " (has a quiz)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {type === "lesson" && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-stone-600">Lesson</label>
+                    <select value={lessonId} onChange={(e) => setLessonId(e.target.value)} className={inputClass}>
+                      {allLessons.every((l) => hasQuestions(l.quiz)) && <option value="">Every lesson already has a quiz</option>}
+                      {allLessons.map((l) => (
+                        <option key={l.id} value={l.id} disabled={hasQuestions(l.quiz)}>
+                          {l.topicTitle} › {l.title}
+                          {hasQuestions(l.quiz) ? " (has a quiz)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )
+          )}
+          {courseAlreadyHasQuiz && (
+            <p className="text-[11px] text-rose-600">This course already has a course quiz — edit that one instead.</p>
+          )}
+          {!editing && type === "course" && !courseAlreadyHasQuiz && (
+            <p className="text-[11px] text-stone-400">A course quiz covers the whole course — for example a final assessment taken at the end.</p>
           )}
 
           {!editing && type === "class" && (
@@ -321,7 +381,7 @@ function QuizPreviewModal({ row, onClose }) {
             <h2 className="text-base font-bold text-stone-900">{row.title}</h2>
             <p className="text-xs text-stone-400">
               {row.belongsTo}
-              {row.type === "course" && ` › ${row.topic.title}`}
+              {row.type !== "class" && ` › ${row.detail}`}
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
@@ -381,11 +441,11 @@ function QuizManager({ currentUser }) {
   const visible = filter === "all" ? rows : rows.filter((r) => r.type === filter);
 
   const attemptCount = (row) =>
-    row.type === "course"
-      ? enrollments
+    row.type === "class"
+      ? classAttempts.filter((a) => a.classId === row.cls.id).length
+      : enrollments
           .filter((e) => e.courseId === row.course.id)
-          .reduce((sum, e) => sum + (e.topicQuizzes?.[row.topic.id]?.attempts?.length ?? 0), 0)
-      : classAttempts.filter((a) => a.classId === row.cls.id).length;
+          .reduce((sum, e) => sum + (e.topicQuizzes?.[quizKey(row.owner)]?.attempts?.length ?? 0), 0);
 
   const handleDelete = async (row) => {
     const ok = await confirm({
@@ -396,7 +456,7 @@ function QuizManager({ currentUser }) {
     });
     if (!ok) return;
     const action =
-      row.type === "course" ? removeTopicQuiz({ courseId: row.course.id, topicId: row.topic.id }) : removeClassQuiz({ classId: row.cls.id });
+      row.type === "class" ? removeClassQuiz({ classId: row.cls.id }) : removeQuiz({ courseId: row.course.id, owner: row.owner });
     await run(action, { successMessage: "Quiz deleted." });
   };
 
@@ -408,8 +468,10 @@ function QuizManager({ currentUser }) {
           onChange={setFilter}
           tabs={[
             { id: "all", label: `All (${rows.length})` },
-            { id: "course", label: "Course quizzes" },
-            { id: "class", label: "Class quizzes" },
+            { id: "course", label: "Course" },
+            { id: "topic", label: "Topic" },
+            { id: "lesson", label: "Lesson" },
+            { id: "class", label: "Class" },
           ]}
         />
         {!isAdmin && (
@@ -527,13 +589,13 @@ function LearnerQuizzes({ currentUser }) {
 
   const rows = collectQuizzes(courses, classes).map((row) => {
     const attempts =
-      row.type === "course"
-        ? enrollments.find((e) => e.courseId === row.course.id)?.topicQuizzes?.[row.topic.id]?.attempts ?? []
+      row.type !== "class"
+        ? enrollments.find((e) => e.courseId === row.course.id)?.topicQuizzes?.[quizKey(row.owner)]?.attempts ?? []
         : classAttempts.filter((a) => a.classId === row.cls.id);
     const best = attempts.length ? Math.max(...attempts.map((a) => a.score)) : null;
     const passed = attempts.some((a) => a.passed);
     const outOfAttempts = !!row.quiz.maxAttempts && attempts.length >= row.quiz.maxAttempts;
-    const to = row.type === "course" ? `/course/${row.course.id}/topic/${row.topic.id}/quiz` : `/classes/${row.cls.id}/quiz`;
+    const to = row.type === "class" ? `/classes/${row.cls.id}/quiz` : quizRoute(row.course.id, row.owner);
     return { ...row, attempts, best, passed, outOfAttempts, to };
   });
 
@@ -576,7 +638,7 @@ function LearnerQuizzes({ currentUser }) {
               <h3 className="text-sm font-bold leading-snug text-stone-900">{row.title}</h3>
               <p className="mt-0.5 text-xs text-stone-500">
                 {row.belongsTo}
-                {row.type === "course" && ` › ${row.topic.title}`}
+                {row.type !== "class" && ` › ${row.detail}`}
               </p>
               <p className="mt-3 text-[11px] text-stone-400">
                 {row.quiz.questions.length} questions · pass mark {row.quiz.passingScore}%

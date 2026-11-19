@@ -70,6 +70,8 @@ function AppShell() {
           <Route path="/verify/:code" element={<VerifyCertificatePage onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId" element={<CoursePlayer onMenuClick={() => setMobileOpen(true)} />} />
           <Route path="/course/:courseId/topic/:topicId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/course/:courseId/lesson/:lessonId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
+          <Route path="/course/:courseId/quiz" element={<CourseQuizPage onMenuClick={() => setMobileOpen(true)} />} />
           <Route
             path="/my-courses"
             element={

@@ -1,7 +1,8 @@
 import * as api from "../api/learning";
 import { answersToApi } from "../api/normalize";
 
-// QuizTaker's startAttempt/submitAttempt for a topic or class quiz.
+// QuizTaker's startAttempt/submitAttempt for a course, topic, lesson or
+// class quiz (target: { courseId | topicId | lessonId | classId }).
 // Failures resolve to { error } / null rather than throwing, so the taker
 // can show the server's message (e.g. "All allowed attempts already used").
 export function quizAttemptHandlers(target, quiz, onError) {

@@ -1,6 +1,90 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { nanoid } from "@reduxjs/toolkit";
-import { Plus, Trash2, CheckSquare, Circle, CheckCircle2, ListChecks, ToggleLeft, X, Timer, AlertCircle } from "lucide-react";
+import { Plus, Trash2, CheckSquare, Circle, CheckCircle2, ListChecks, ToggleLeft, X, Timer, AlertCircle, Download, FileUp } from "lucide-react";
+import { buildTemplateCsv, parseQuizCsv } from "../utils/quizImport";
+
+// Add many questions at once: download the CSV template, fill it in Excel or
+// Google Sheets, upload it back. Valid rows are added; problem rows are
+// listed by spreadsheet row so they can be fixed and re-uploaded.
+function QuizImportPanel({ onImport }) {
+  const inputRef = useRef(null);
+  const [result, setResult] = useState(null); // { added, errors }
+
+  const downloadTemplate = () => {
+    const url = URL.createObjectURL(new Blob([buildTemplateCsv()], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "quiz-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFile = async (file) => {
+    const { questions, errors } = parseQuizCsv(await file.text());
+    if (questions.length) onImport(questions);
+    setResult({ added: questions.length, errors });
+  };
+
+  return (
+    <div className="mb-3 rounded-lg border border-dashed border-brand-200 bg-brand-50/50 p-3">
+      <p className="text-xs font-semibold text-stone-700">Add questions from a file</p>
+      <p className="mt-0.5 text-[11px] text-stone-500">
+        Download the template, fill it in (one question per row) in Excel or Google Sheets, save as CSV and upload it.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={downloadTemplate}
+          className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
+        >
+          <Download size={12} /> Download template
+        </button>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-800"
+        >
+          <FileUp size={12} /> Upload filled template
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) handleFile(file);
+          }}
+        />
+      </div>
+      {result && (
+        <div className="mt-2 space-y-1 text-[11px]">
+          {result.added > 0 && (
+            <p className="font-semibold text-emerald-700">
+              Added {result.added} question{result.added === 1 ? "" : "s"} — check them below before saving.
+            </p>
+          )}
+          {result.errors.length > 0 && (
+            <div className="rounded-md bg-rose-50 px-2 py-1.5 text-rose-700">
+              <p className="font-semibold">
+                {result.errors.length} row{result.errors.length === 1 ? "" : "s"} skipped — fix and upload again:
+              </p>
+              <ul className="mt-0.5 list-disc pl-4">
+                {result.errors.slice(0, 8).map((e) => (
+                  <li key={`${e.row}-${e.message}`}>
+                    Row {e.row}: {e.message}
+                  </li>
+                ))}
+                {result.errors.length > 8 && <li>…and {result.errors.length - 8} more</li>}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TYPE_META = {
   single: { label: "Multiple choice", Icon: Circle },
@@ -120,6 +204,8 @@ export default function QuizBuilder({
           </div>
         </div>
       </div>
+
+      <QuizImportPanel onImport={(imported) => onQuestionsChange([...questions, ...imported])} />
 
       {questions.length > 0 && (
         <div className="mb-3 space-y-1.5">

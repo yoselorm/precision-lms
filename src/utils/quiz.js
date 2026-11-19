@@ -12,3 +12,15 @@ export function formatClock(totalSeconds) {
   const s = totalSeconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+// Session quiz results are kept per quiz under this key (topic quizzes use
+// the bare topic id, as before).
+export const quizKey = (owner) => (owner.type === "topic" ? owner.id : `${owner.type}:${owner.id}`);
+
+// Where a learner takes each kind of course quiz.
+export const quizRoute = (courseId, owner) =>
+  owner.type === "course"
+    ? `/course/${courseId}/quiz`
+    : owner.type === "lesson"
+    ? `/course/${courseId}/lesson/${owner.id}/quiz`
+    : `/course/${courseId}/topic/${owner.id}/quiz`;
