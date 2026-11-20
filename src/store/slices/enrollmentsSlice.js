@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
-import { normalizeEnrollment } from "../../api/normalize";
+import { normalizeEnrollment, normalizeWatchProgress } from "../../api/normalize";
 import { apiThunk, listThunk } from "../apiThunk";
 import { upsertCourses } from "./coursesSlice";
 import { logout } from "./authSlice";
@@ -26,11 +26,18 @@ export const enrollInCourse = apiThunk("enrollments/enroll", async ({ courseId }
   return { enrollment, userId: getState().auth.currentUser?.id };
 });
 
-// The list omits which lessons are done; the course player loads the full
-// enrollment for that.
+// The course player loads its enrollment fresh (completed lessons and
+// video watch progress).
 export const fetchEnrollment = apiThunk("enrollments/fetchOne", async ({ enrollmentId }, { getState }) => ({
   enrollment: await api.getEnrollment(enrollmentId),
   userId: getState().auth.currentUser?.id,
+}));
+
+// Saves video watch progress — needed before the server will complete a
+// video lesson, and lets learners resume on another device.
+export const saveLessonProgress = apiThunk("enrollments/saveLessonProgress", async ({ enrollmentId, lessonId, progress }) => ({
+  enrollmentId,
+  saved: await api.saveLessonProgress(enrollmentId, lessonId, progress),
 }));
 
 // Progress/status are recomputed server-side (and points awarded).
@@ -45,6 +52,7 @@ function merge(previous, incoming) {
   return {
     ...incoming,
     completedModuleIds: incoming.completedModuleIds ?? previous?.completedModuleIds ?? [],
+    watchProgress: incoming.watchProgress ?? previous?.watchProgress ?? {},
     topicQuizzes: previous?.topicQuizzes || {},
   };
 }
@@ -92,6 +100,11 @@ const enrollmentsSlice = createSlice({
       .addCase(enrollInCourse.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(completeLesson.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(fetchEnrollment.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(saveLessonProgress.fulfilled, (state, action) => {
+        const { enrollmentId, saved } = action.payload;
+        const enrollment = state.enrollments.find((e) => e.id === enrollmentId);
+        if (enrollment && saved?.lesson_id) enrollment.watchProgress[saved.lesson_id] = normalizeWatchProgress(saved);
+      })
       .addCase(logout, () => initialState);
   },
 });

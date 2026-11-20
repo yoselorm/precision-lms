@@ -54,7 +54,7 @@ function NativeVideo({ src, tracker, autoPlay, onEnded }) {
         onPause={tracker.persist}
         onEnded={() => {
           tracker.persist();
-          onEnded?.(tracker.share());
+          onEnded?.(tracker.share(), tracker.snapshot());
         }}
         className="aspect-video w-full rounded-xl bg-stone-900"
       >
@@ -142,7 +142,7 @@ function BunnyVideo({ src, tracker, autoPlay, onEnded }) {
         tracker.persist();
       } else if (data.event === "ended") {
         tracker.persist();
-        onEnded?.(tracker.share());
+        onEnded?.(tracker.share(), tracker.snapshot());
       }
     };
 
@@ -168,14 +168,15 @@ function BunnyVideo({ src, tracker, autoPlay, onEnded }) {
 
 // A lesson video with the learner guard rails (see useWatchTracker): no
 // seeking ahead until a quarter has been watched, progress remembered across
-// visits, and `onEligible` once enough has been watched to complete it.
+// visits (and devices, through `serverProgress` / `onSync`), and
+// `onEligible(snapshot)` once enough has been watched to complete it.
 // With `guard` off (trainer/admin previews) it's a plain player.
 // Render with key={lessonId} so each lesson gets a fresh instance.
 //
 // To discourage copying there's no download button or right-click menu.
 // That doesn't stop a determined copier; it raises the bar.
-export default function GuardedVideo({ src, userId, lessonId, guard, autoPlay, onProgress, onEligible, onEnded }) {
-  const tracker = useWatchTracker({ guard, userId, lessonId, onProgress, onEligible });
+export default function GuardedVideo({ src, userId, lessonId, guard, autoPlay, serverProgress, onProgress, onEligible, onSync, onEnded }) {
+  const tracker = useWatchTracker({ guard, userId, lessonId, serverProgress, onProgress, onEligible, onSync });
   return bunnyEmbedUrl(src) ? (
     <BunnyVideo src={src} tracker={tracker} autoPlay={autoPlay} onEnded={onEnded} />
   ) : (

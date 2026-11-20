@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { CheckCircle2, Circle, PlayCircle, FileText, File, HelpCircle, ArrowLeft, ArrowRight, Lock, Tag, ExternalLink, Paperclip, Download, Layers, Clock, Award, Eye, Loader2, X } from "lucide-react";
 import { selectCourseById, selectCoursesStatus, fetchCourseContent } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { selectAssignmentsByCourse } from "../store/slices/assignmentsSlice";
-import { selectEnrollment, enrollInCourse, completeLesson, fetchEnrollment } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment, enrollInCourse, completeLesson, fetchEnrollment, saveLessonProgress } from "../store/slices/enrollmentsSlice";
 import { useApiAction } from "../hooks/useApiAction";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
@@ -115,6 +115,11 @@ export default function CoursePlayer({ onMenuClick }) {
   const [eligibleIds, setEligibleIds] = useState([]);
   const [nextUpId, setNextUpId] = useState(null);
   const [autoPlayId, setAutoPlayId] = useState(null);
+  // Video lessons being completed: { [lessonId]: Promise<result | null> },
+  // and the latest watch snapshot per lesson (to retry with).
+  const completing = useRef({});
+  const snapshots = useRef({});
+  const advancing = useRef(false);
 
   // Remember that this learner has started the course ("Resume" on cards).
   const startedUserId = currentUser?.id;
@@ -204,6 +209,7 @@ export default function CoursePlayer({ onMenuClick }) {
   // `autoPlay`: arriving by auto-advance or "Next" starts the video.
   const switchItem = (id, { autoPlay = false } = {}) => {
     if (!isUnlocked(id)) {
+      setNextUpId(null);
       dispatch(pushToast({ type: "info", message: "Finish the previous lesson first to unlock this one." }));
       return;
     }
@@ -218,14 +224,66 @@ export default function CoursePlayer({ onMenuClick }) {
 
   const handleMarkComplete = () => completeActive(activeLesson, `"${activeLesson.title}" marked as complete.`);
 
+  // Watch progress goes to the server as the video plays; failures are
+  // retried with the next update.
+  const syncProgress = (lesson, snapshot) => {
+    snapshots.current[lesson.id] = snapshot;
+    if (learnerMode) dispatch(saveLessonProgress({ enrollmentId: enrollment.id, lessonId: lesson.id, progress: snapshot }));
+  };
+
+  // Completes a watched video lesson: the server needs the watch progress
+  // first (it refuses below 90%). One attempt at a time per lesson; resolves
+  // to a truthy value once the lesson is complete.
+  const completeVideo = (lesson) => {
+    if (!learnerMode || isItemComplete(lesson.id)) return Promise.resolve(true);
+    if (!completing.current[lesson.id]) {
+      completing.current[lesson.id] = (async () => {
+        const snapshot = snapshots.current[lesson.id];
+        if (snapshot) await dispatch(saveLessonProgress({ enrollmentId: enrollment.id, lessonId: lesson.id, progress: snapshot }));
+        const done = await completeActive(lesson, `"${lesson.title}" completed.`);
+        if (!done) delete completing.current[lesson.id];
+        return done;
+      })();
+    }
+    return completing.current[lesson.id];
+  };
+
   // Enough of the video watched: complete it right away (green tick).
-  const handleEligible = (lesson) => {
+  const handleEligible = (lesson, snapshot) => {
     setEligibleIds((ids) => (ids.includes(lesson.id) ? ids : [...ids, lesson.id]));
-    if (learnerMode && !isItemComplete(lesson.id)) completeActive(lesson, `"${lesson.title}" completed.`);
+    snapshots.current[lesson.id] = snapshot;
+    completeVideo(lesson);
+  };
+
+  // After the "Up next" countdown: make sure the finished lesson is
+  // recorded as complete, then open the next one. If completing fails the
+  // countdown just closes (the error is shown) instead of hanging.
+  const advanceFrom = async (lesson) => {
+    if (advancing.current) return;
+    advancing.current = true;
+    try {
+      const next = nextItemAfter(lesson.id);
+      const wasComplete = isItemComplete(lesson.id);
+      const done = await completeVideo(lesson);
+      if (!done || !next) {
+        setNextUpId(null);
+        return;
+      }
+      // Just completed: this render's lock state predates it, so go straight there.
+      if (wasComplete) switchItem(next.id, { autoPlay: true });
+      else {
+        setNextUpId(null);
+        setAutoPlayId(next.id);
+        setActiveItemId(next.id);
+      }
+    } finally {
+      advancing.current = false;
+    }
   };
 
   // Video finished: move on if it counts as watched, otherwise say why not.
-  const handleVideoEnded = (lesson, share) => {
+  const handleVideoEnded = (lesson, share, snapshot) => {
+    if (snapshot) snapshots.current[lesson.id] = snapshot;
     const watched = !learnerMode || isItemComplete(lesson.id) || share >= COMPLETE_SHARE;
     if (!watched) {
       dispatch(
@@ -236,6 +294,7 @@ export default function CoursePlayer({ onMenuClick }) {
       );
       return;
     }
+    completeVideo(lesson);
     const next = nextItemAfter(lesson.id);
     if (next) setNextUpId(next.id);
     else if (learnerMode) dispatch(pushToast({ type: "success", message: "That's the last lesson in this course — well done!" }));
@@ -381,7 +440,7 @@ export default function CoursePlayer({ onMenuClick }) {
             {nextUpId && nextItemAfter(activeLesson.id)?.id === nextUpId && (
               <NextUpCountdown
                 title={nextItemAfter(activeLesson.id).title}
-                onGo={() => switchItem(nextUpId, { autoPlay: true })}
+                onGo={() => advanceFrom(activeLesson)}
                 onCancel={() => setNextUpId(null)}
               />
             )}
@@ -396,8 +455,10 @@ export default function CoursePlayer({ onMenuClick }) {
                   lessonId={activeLesson.id}
                   guard={learnerMode && !isItemComplete(activeLesson.id)}
                   onProgress={(pct) => setWatchPct((prev) => ({ ...prev, [activeLesson.id]: pct }))}
-                  onEligible={() => handleEligible(activeLesson)}
-                  onEnded={(share) => handleVideoEnded(activeLesson, share)}
+                  serverProgress={enrollment?.watchProgress?.[activeLesson.id]}
+                  onSync={(snapshot) => syncProgress(activeLesson, snapshot)}
+                  onEligible={(snapshot) => handleEligible(activeLesson, snapshot)}
+                  onEnded={(share, snapshot) => handleVideoEnded(activeLesson, share, snapshot)}
                 />
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-xl bg-stone-900">

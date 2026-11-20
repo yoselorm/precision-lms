@@ -270,6 +270,8 @@ export function answersToApi(quiz, answers) {
 
 // ── Learning ──
 
+export const normalizeWatchProgress = (p) => ({ watchedSeconds: p.watched_seconds || 0, position: p.position || 0, duration: p.duration || 0 });
+
 export function normalizeEnrollment(e, userId) {
   return {
     id: e.id,
@@ -282,6 +284,8 @@ export function normalizeEnrollment(e, userId) {
     // null when the response leaves it out (the enrollment list does) —
     // callers keep what they already knew rather than clearing it.
     completedModuleIds: e.completed_lesson_ids ?? null,
+    // { [lessonId]: { watchedSeconds, position, duration } }, or null if left out.
+    watchProgress: e.lesson_watch_progress ? Object.fromEntries(e.lesson_watch_progress.map((p) => [p.lesson_id, normalizeWatchProgress(p)])) : null,
     topicQuizzes: {},
   };
 }

@@ -23,13 +23,22 @@ export function listEnrollments() {
   return apiRequest("/v1/user/enrollments");
 }
 
-// One enrollment — unlike the list, it includes completed_lesson_ids.
 export function getEnrollment(id) {
   return apiRequest(`/v1/user/enrollments/${id}`);
 }
 
 export function enroll(courseId) {
   return apiRequest("/v1/user/enrollments", { method: "POST", body: { course_id: courseId } });
+}
+
+// How much of a video lesson has been watched (whole seconds). The server
+// keeps the highest watched_seconds it has seen and won't complete a video
+// lesson below 90% of its duration.
+export function saveLessonProgress(enrollmentId, lessonId, { watchedSeconds, position, duration }) {
+  return apiRequest(`/v1/user/enrollments/${enrollmentId}/lessons/${lessonId}/progress`, {
+    method: "PUT",
+    body: { watched_seconds: watchedSeconds, position, duration },
+  });
 }
 
 export function completeLesson(enrollmentId, lessonId) {
