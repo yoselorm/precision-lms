@@ -15,7 +15,8 @@ import { formatFileSize } from "../components/LessonListEditor";
 import TopicComments from "../components/TopicComments";
 import GuardedVideo from "../components/GuardedVideo";
 import { pushToast } from "../store/slices/uiSlice";
-import { COMPLETE_SHARE } from "../utils/watchProgress";
+import { COMPLETE_SHARE, markCourseStarted } from "../utils/watchProgress";
+import { bunnyEmbedUrl } from "../utils/videoEmbed";
 import { quizKey, quizRoute } from "../utils/quiz";
 import { usePageData } from "../hooks/usePageData";
 import { loadCoursePage } from "../store/loadAppData";
@@ -113,6 +114,14 @@ export default function CoursePlayer({ onMenuClick }) {
   const [watchPct, setWatchPct] = useState({});
   const [eligibleIds, setEligibleIds] = useState([]);
   const [nextUpId, setNextUpId] = useState(null);
+  const [autoPlayId, setAutoPlayId] = useState(null);
+
+  // Remember that this learner has started the course ("Resume" on cards).
+  const startedUserId = currentUser?.id;
+  const startedEnrolled = !!enrollment && currentUser?.role === "learner";
+  useEffect(() => {
+    if (startedEnrolled) markCourseStarted(startedUserId, courseId);
+  }, [startedEnrolled, startedUserId, courseId]);
 
   const { activeTopic, activeLesson, activeQuiz } = useMemo(() => {
     if (!course) return {};
@@ -192,12 +201,14 @@ export default function CoursePlayer({ onMenuClick }) {
   };
   const nextItemAfter = (id) => items[items.findIndex((i) => i.id === id) + 1] ?? null;
 
-  const switchItem = (id) => {
+  // `autoPlay`: arriving by auto-advance or "Next" starts the video.
+  const switchItem = (id, { autoPlay = false } = {}) => {
     if (!isUnlocked(id)) {
       dispatch(pushToast({ type: "info", message: "Finish the previous lesson first to unlock this one." }));
       return;
     }
     setNextUpId(null);
+    setAutoPlayId(autoPlay ? id : null);
     setActiveItemId(id);
   };
 
@@ -355,9 +366,10 @@ export default function CoursePlayer({ onMenuClick }) {
       </aside>
 
       {/* Content area */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-8">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         {activeLesson && (
-          <div className="mx-auto max-w-2xl space-y-5">
+          // Videos get a wide column; reading stays at a comfortable line length.
+          <div className={`mx-auto space-y-5 ${activeLesson.type === "video" ? "max-w-6xl" : "max-w-3xl"}`}>
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
                 {activeLesson.type === "video" ? "Video" : activeLesson.type === "document" ? "Document" : "Reading"}
@@ -369,7 +381,7 @@ export default function CoursePlayer({ onMenuClick }) {
             {nextUpId && nextItemAfter(activeLesson.id)?.id === nextUpId && (
               <NextUpCountdown
                 title={nextItemAfter(activeLesson.id).title}
-                onGo={() => switchItem(nextUpId)}
+                onGo={() => switchItem(nextUpId, { autoPlay: true })}
                 onCancel={() => setNextUpId(null)}
               />
             )}
@@ -378,6 +390,7 @@ export default function CoursePlayer({ onMenuClick }) {
               activeLesson.videoUrl ? (
                 <GuardedVideo
                   key={activeLesson.id}
+                  autoPlay={autoPlayId === activeLesson.id}
                   src={activeLesson.videoUrl}
                   userId={currentUser?.id}
                   lessonId={activeLesson.id}
@@ -444,27 +457,24 @@ export default function CoursePlayer({ onMenuClick }) {
 
             {learnerMode && (() => {
               const done = isItemComplete(activeLesson.id);
-              // Uploaded/linked videos complete by watching; other lessons by hand.
+              // Videos complete by watching — no button until they're done.
+              // Other lessons are marked complete by hand.
               const watchGated = activeLesson.type === "video" && !!activeLesson.videoUrl;
-              const canComplete = !watchGated || eligibleIds.includes(activeLesson.id);
               const next = nextItemAfter(activeLesson.id);
+              if (watchGated && !done) return null;
               return (
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleMarkComplete}
-                    disabled={busy || done || !canComplete}
+                    disabled={busy || done}
                     className="flex items-center gap-1.5 rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {done && <CheckCircle2 size={15} />}
-                    {done
-                      ? "Completed"
-                      : canComplete
-                      ? "Mark as complete"
-                      : `Watch ${COMPLETE_PCT}% to complete · ${watchPct[activeLesson.id] ?? 0}% watched`}
+                    {done ? "Completed" : "Mark as complete"}
                   </button>
                   {done && next && (
                     <button
-                      onClick={() => switchItem(next.id)}
+                      onClick={() => switchItem(next.id, { autoPlay: true })}
                       className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
                     >
                       Next: {next.title} <ArrowRight size={14} />
@@ -523,7 +533,17 @@ function CourseOverview({ course, topics, currentUser, enrollment, enrolling, on
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-              {course.demoVideoUrl ? (
+              {course.demoVideoUrl && bunnyEmbedUrl(course.demoVideoUrl) ? (
+                <div className="relative aspect-video w-full bg-stone-900">
+                  <iframe
+                    src={bunnyEmbedUrl(course.demoVideoUrl)}
+                    title={`${course.title} preview`}
+                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    className="absolute inset-0 h-full w-full border-0"
+                  />
+                </div>
+              ) : course.demoVideoUrl ? (
                 <video controls poster={course.thumbnailImage} className="aspect-video w-full bg-stone-900">
                   <source src={course.demoVideoUrl} />
                 </video>

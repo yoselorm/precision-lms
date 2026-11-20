@@ -65,3 +65,24 @@ export function saveProgress(userId, lessonId, progress) {
     // Storage full or blocked — progress just won't survive a reload.
   }
 }
+
+// Whether a learner has opened an enrolled course. The server only moves an
+// enrollment to "in-progress" once a lesson is completed, so this lets
+// course cards say "Resume" as soon as someone has started watching.
+const startedKey = (userId, courseId) => `afenet-lms:started:${userId}:${courseId}`;
+
+export function markCourseStarted(userId, courseId) {
+  try {
+    localStorage.setItem(startedKey(userId, courseId), "1");
+  } catch {
+    // Storage blocked — the card just keeps saying "Start course".
+  }
+}
+
+export function hasStartedCourse(userId, courseId) {
+  try {
+    return localStorage.getItem(startedKey(userId, courseId)) === "1";
+  } catch {
+    return false;
+  }
+}

@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { Clock, Users, Layers, Tag } from "lucide-react";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import CircularProgress from "./CircularProgress";
+import { hasStartedCourse } from "../utils/watchProgress";
 import StatusBadge from "./StatusBadge";
 
 export default function CourseCard({ course, enrollment }) {
@@ -12,7 +13,11 @@ export default function CourseCard({ course, enrollment }) {
   // Only learners (or visitors who'll sign up as one) can enroll.
   const canEnroll = !currentUser || currentUser.role === "learner";
   const progress = enrollment?.progress ?? 0;
-  const status = enrollment?.status ?? "not-started";
+  // The server says "not-started" until a lesson is completed; once the
+  // learner has opened the course, treat it as in progress.
+  const serverStatus = enrollment?.status ?? "not-started";
+  const started = !!enrollment && serverStatus === "not-started" && (enrollment.progress > 0 || hasStartedCourse(currentUser?.id, course.id));
+  const status = started ? "in-progress" : serverStatus;
   const ringColor = progress === 100 ? "#16a34a" : progress > 0 ? "#2563eb" : "#d6d3d1";
 
   return (
@@ -79,7 +84,7 @@ export default function CourseCard({ course, enrollment }) {
               ? "Review"
               : status === "not-started"
               ? "Start course"
-              : "Continue"}
+              : "Resume"}
           </button>
         </div>
       </div>

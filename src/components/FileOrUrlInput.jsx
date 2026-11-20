@@ -125,7 +125,7 @@ export default function FileOrUrlInput({ value, onChange, accept, kind = "file",
         <input
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={kind === "image" ? "Paste an image URL" : kind === "document" ? "Document URL (PDF/Word link)" : "Video URL (mp4 link or embed URL)"}
+          placeholder={kind === "image" ? "Paste an image URL" : kind === "document" ? "Document URL (PDF/Word link)" : "Video URL (mp4 link or Bunny Stream link)"}
           className="w-full rounded-lg border border-stone-200 px-3 py-2 text-xs outline-none focus:border-brand-600"
         />
       )}
