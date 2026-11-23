@@ -79,6 +79,8 @@ export function normalizeTopic(t) {
     description: t.description || "",
     sortOrder: t.sort_order ?? 0,
     lessons: (t.lessons || []).map(normalizeLesson).sort(bySortOrder),
+    // { id, title } when the topic has a quiz (the full quiz loads separately).
+    quizSummary: t.quiz?.id ? { id: t.quiz.id, title: t.quiz.title || "" } : null,
     quiz: null,
   };
 }
@@ -155,6 +157,10 @@ export function normalizeCourse(c) {
     demoVideoUrl: c.demo_video_url || "",
     // Not returned by the API yet.
     studentsCount: 0,
+    // null until someone has rated it; undefined when this response doesn't
+    // carry ratings at all (only the public catalog does, for now).
+    averageRating: c.average_rating === undefined ? undefined : c.average_rating,
+    ratingsCount: c.ratings_count === undefined ? undefined : c.ratings_count ?? 0,
     updatedDate: day(c.updated_at || c.created_at),
     price: c.price || 0,
     description: c.description || "",
@@ -269,6 +275,60 @@ export function answersToApi(quiz, answers) {
 }
 
 // ── Learning ──
+
+// ── Ratings, notifications, issued certificates, learner quiz list ──
+
+export function normalizeRating(r) {
+  return {
+    id: r.id,
+    courseId: r.course_id,
+    rating: r.rating,
+    review: r.review || "",
+    user: normalizeUserStub(r.user) || { id: null, name: "Former learner", avatarUrl: initialsAvatar("?", "#a8a29e") },
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+// Everything beyond id/type/message/read_at/created_at is type-specific
+// and kept as `data` (course_id, verification_code, ...).
+export function normalizeNotification(n) {
+  const { id, type, message, read_at: readAt, created_at: createdAt, ...data } = n;
+  return { id, type: type || "", message: message || "", readAt: readAt || null, createdAt, data };
+}
+
+export function normalizeIssuedCertificate(c) {
+  return {
+    id: c.id,
+    code: c.verification_code,
+    issuedAt: c.issued_at,
+    pdfUrl: c.pdf_url || "",
+    title: c.certificate_title || "Certificate of completion",
+    issuer: c.issuer || "",
+    courseId: c.course_id,
+    courseTitle: c.course_title || "",
+  };
+}
+
+export function normalizeMyQuiz(q) {
+  return {
+    id: q.id,
+    title: q.title || "Quiz",
+    passingScore: q.passing_score ?? 0,
+    timeLimitMins: q.time_limit_mins || 0,
+    maxAttempts: q.max_attempts || 0,
+    questionCount: q.question_count ?? 0,
+    type: q.source_type === "class" ? "class" : "topic",
+    topicId: q.topic_id || null,
+    courseId: q.course_id || null,
+    courseTitle: q.course_title || "",
+    classId: q.school_class_id || null,
+    classTitle: q.school_class_title || "",
+    attemptsUsed: q.attempts_used ?? 0,
+    bestScore: q.best_score ?? null,
+    passed: !!q.passed,
+  };
+}
 
 export const normalizeWatchProgress = (p) => ({ watchedSeconds: p.watched_seconds || 0, position: p.position || 0, duration: p.duration || 0 });
 

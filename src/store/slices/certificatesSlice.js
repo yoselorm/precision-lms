@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
-import { normalizeCertificate, templateToApi } from "../../api/normalize";
+import { normalizeCertificate, normalizeIssuedCertificate, templateToApi } from "../../api/normalize";
 import { apiThunk, listThunk } from "../apiThunk";
 import { logout } from "./authSlice";
 
@@ -8,9 +8,14 @@ const initialState = {
   // Admin-managed certificate templates, each optionally linked to a course.
   certificates: [],
   status: "idle",
+  // The signed-in learner's issued certificates.
+  issued: [],
+  issuedStatus: "idle",
 };
 
 export const fetchCertificates = listThunk("certificates/fetch", () => api.listCertificates());
+
+export const fetchMyCertificates = listThunk("certificates/fetchMine", () => api.listMyCertificates());
 
 const certificateToApi = ({ courseId, title, issuer, signatoryName, signatoryTitle, template }) => ({
   course_id: courseId || null,
@@ -51,6 +56,16 @@ const certificatesSlice = createSlice({
       .addCase(fetchCertificates.rejected, (state) => {
         state.status = "failed";
       })
+      .addCase(fetchMyCertificates.pending, (state) => {
+        state.issuedStatus = "loading";
+      })
+      .addCase(fetchMyCertificates.fulfilled, (state, action) => {
+        state.issued = action.payload.map(normalizeIssuedCertificate);
+        state.issuedStatus = "succeeded";
+      })
+      .addCase(fetchMyCertificates.rejected, (state) => {
+        state.issuedStatus = "failed";
+      })
       .addCase(saveCourseCertificate.fulfilled, (state, action) => {
         const cert = normalizeCertificate(action.payload);
         state.certificates = [...state.certificates.filter((c) => c.id !== cert.id), cert];
@@ -65,6 +80,8 @@ const certificatesSlice = createSlice({
 export default certificatesSlice.reducer;
 
 export const selectAllCertificates = (state) => state.certificates.certificates;
+export const selectIssuedCertificates = (state) => state.certificates.issued;
+export const selectIssuedCertificatesStatus = (state) => state.certificates.issuedStatus;
 export const selectCertificateForCourse = (state, courseId) =>
   state.certificates.certificates.find((c) => c.courseId === courseId) || null;
 

@@ -6,6 +6,7 @@ import { selectCurrentUser } from "../store/slices/authSlice";
 import CircularProgress from "./CircularProgress";
 import { hasStartedCourse } from "../utils/watchProgress";
 import StatusBadge from "./StatusBadge";
+import { RatingSummary } from "./Stars";
 
 export default function CourseCard({ course, enrollment }) {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ export default function CourseCard({ course, enrollment }) {
         <h3 className="text-sm font-bold leading-snug text-stone-900 line-clamp-2">{course.title}</h3>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-stone-400">
+          <RatingSummary average={course.averageRating} count={course.ratingsCount} size={11} />
           {/* Topic and student counts aren't in the course list response. */}
           {course.contentStatus === "succeeded" && (
             <span className="flex items-center gap-1">

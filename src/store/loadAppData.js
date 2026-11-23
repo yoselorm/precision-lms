@@ -1,19 +1,19 @@
 import { fetchCategories } from "./slices/categoriesSlice";
-import { fetchCourses } from "./slices/coursesSlice";
+import { fetchCourses, fetchPendingRevisions } from "./slices/coursesSlice";
 import { fetchUsers } from "./slices/usersSlice";
 import { fetchClasses } from "./slices/classesSlice";
-import { fetchEnrollments } from "./slices/enrollmentsSlice";
+import { fetchEnrollments, fetchMyQuizzes } from "./slices/enrollmentsSlice";
 import { fetchAssignments } from "./slices/assignmentsSlice";
-import { fetchCertificates } from "./slices/certificatesSlice";
+import { fetchCertificates, fetchMyCertificates } from "./slices/certificatesSlice";
 import { fetchDashboard } from "./slices/dashboardSlice";
 
 const roleOf = (getState) => getState().auth.currentUser?.role;
 
-// On sign-in: only what the app shell itself needs — the header's
-// notifications (pending approvals, a trainer's classes, a learner's
-// completed courses) and the category list forms share. Everything else is
-// loaded by the page that shows it (see the page loaders below), so data is
-// fresh whenever a page is opened.
+// On sign-in: the course list, the categories forms share, and the role's
+// core list (users / classes / enrollments) that several pages look things
+// up in. Everything else is loaded by the page that shows it (see the page
+// loaders below), so data is fresh whenever a page is opened.
+// Notifications load themselves from the header's bell.
 export const loadAppData = () => async (dispatch, getState) => {
   const role = roleOf(getState);
   const jobs = [dispatch(fetchCategories()), dispatch(fetchCourses())];
@@ -28,7 +28,12 @@ export const loadAppData = () => async (dispatch, getState) => {
 // rendering what's already loaded meanwhile, so navigation stays instant.
 // Concurrent requests for the same list are shared (see listThunk).
 
-export const loadCourses = () => (dispatch) => dispatch(fetchCourses());
+// Admins also get pending course updates, so a course's proposed changes
+// can be previewed and reviewed from its page.
+export const loadCourses = () => async (dispatch, getState) => {
+  await dispatch(fetchCourses());
+  if (roleOf(getState) === "admin") await dispatch(fetchPendingRevisions());
+};
 
 // Landing page, public catalog and course overview: signed out this hits
 // the public catalog endpoint (see fetchCourses).
@@ -42,10 +47,19 @@ export const loadUsers = () => (dispatch) => dispatch(fetchUsers());
 
 export const loadCategories = () => (dispatch) => dispatch(fetchCategories());
 
-// Admin course list also shows which courses have a certificate.
+// Admin course list also shows which courses have a certificate, and which
+// have an update awaiting review (attached once the courses are in).
 export const loadAdminCourses = () => async (dispatch) => {
   await Promise.all([dispatch(fetchCourses()), dispatch(fetchCertificates()), dispatch(fetchUsers())]);
+  await dispatch(fetchPendingRevisions());
 };
+
+// Learners' issued certificates come from the server.
+export const loadMyCertificates = () => async (dispatch) => {
+  await Promise.all([dispatch(fetchMyCertificates()), dispatch(fetchCourses())]);
+};
+
+export const loadAdminRatings = () => (dispatch) => dispatch(fetchCourses());
 
 export const loadCertificates = () => async (dispatch) => {
   await Promise.all([dispatch(fetchCertificates()), dispatch(fetchCourses())]);
@@ -65,11 +79,11 @@ export const loadAssignments = () => async (dispatch, getState) => {
   await dispatch(fetchAssignments());
 };
 
-// The quizzes themselves are loaded per course/class by the page.
+// Learners get their whole quiz list in one request. Trainers and admins
+// manage quizzes per course/class, loaded by the page.
 export const loadQuizzes = () => async (dispatch, getState) => {
-  const jobs = [dispatch(fetchClasses()), dispatch(fetchCourses())];
-  if (roleOf(getState) === "learner") jobs.push(dispatch(fetchEnrollments()));
-  await Promise.all(jobs);
+  if (roleOf(getState) === "learner") return dispatch(fetchMyQuizzes());
+  await Promise.all([dispatch(fetchClasses()), dispatch(fetchCourses())]);
 };
 
 export const loadDashboard = () => async (dispatch, getState) => {

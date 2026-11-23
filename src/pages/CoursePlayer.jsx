@@ -14,6 +14,10 @@ import { RichText } from "../components/RichTextEditor";
 import { formatFileSize } from "../components/LessonListEditor";
 import TopicComments from "../components/TopicComments";
 import GuardedVideo from "../components/GuardedVideo";
+import CourseReviews, { MyCourseRating } from "../components/CourseReviews";
+import { RatingSummary, StarRating } from "../components/Stars";
+import ModalOverlay from "../components/ModalOverlay";
+import { selectMyRating } from "../store/slices/ratingsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { COMPLETE_SHARE, markCourseStarted } from "../utils/watchProgress";
 import { bunnyEmbedUrl } from "../utils/videoEmbed";
@@ -120,6 +124,15 @@ export default function CoursePlayer({ onMenuClick }) {
   const completing = useRef({});
   const snapshots = useRef({});
   const advancing = useRef(false);
+  // "Rate this course" — opens by itself when the learner finishes the course.
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const enrollmentStatus = enrollment?.status;
+  const previousStatus = useRef(enrollmentStatus);
+  useEffect(() => {
+    if (previousStatus.current && previousStatus.current !== "completed" && enrollmentStatus === "completed") setRatingOpen(true);
+    previousStatus.current = enrollmentStatus;
+  }, [enrollmentStatus]);
+  const myRating = useSelector((state) => selectMyRating(state, courseId));
 
   // Remember that this learner has started the course ("Resume" on cards).
   const startedUserId = currentUser?.id;
@@ -302,6 +315,22 @@ export default function CoursePlayer({ onMenuClick }) {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-stone-50 lg:flex-row">
+      {ratingOpen && learnerMode && (
+        <ModalOverlay>
+          <div className="w-full max-w-md animate-scale-in rounded-2xl bg-white p-6">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-stone-900">Rate “{course.title}”</h2>
+                {enrollment?.status === "completed" && <p className="text-xs text-stone-500">You've completed this course — well done!</p>}
+              </div>
+              <button onClick={() => setRatingOpen(false)} className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600">
+                <X size={16} />
+              </button>
+            </div>
+            <MyCourseRating courseId={course.id} compact />
+          </div>
+        </ModalOverlay>
+      )}
       {/* Topic/lesson list */}
       <aside className="flex max-h-64 w-full shrink-0 flex-col overflow-y-auto border-b border-stone-200 bg-white p-4 lg:h-full lg:max-h-none lg:min-h-0 lg:w-80 lg:border-b-0 lg:border-r">
         <button onClick={() => navigate(-1)} className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-stone-700">
@@ -326,6 +355,24 @@ export default function CoursePlayer({ onMenuClick }) {
           <>
             <ProgressBar value={enrollment?.progress ?? 0} />
             <p className="mb-4 mt-1.5 text-[11px] text-stone-400">{enrollment?.progress ?? 0}% complete</p>
+            {enrollment?.status === "completed" && (
+              <button
+                onClick={() => setRatingOpen(true)}
+                className="mb-4 flex w-full items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                {myRating ? (
+                  <>
+                    <span>Your rating</span>
+                    <StarRating value={myRating.rating} size={13} />
+                  </>
+                ) : (
+                  <>
+                    <span>Course complete — rate it</span>
+                    <StarRating value={0} size={13} />
+                  </>
+                )}
+              </button>
+            )}
           </>
         )}
 
@@ -615,6 +662,7 @@ function CourseOverview({ course, topics, currentUser, enrollment, enrolling, on
                 <span className="text-[10px] font-bold uppercase tracking-wider text-brand-700">{course.category}</span>
                 <h1 className="mt-1 text-xl font-bold text-stone-900 sm:text-2xl">{course.title}</h1>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-stone-500">
+                  <RatingSummary average={course.averageRating} count={course.ratingsCount} size={13} />
                   {topicsKnown && (
                     <span className="flex items-center gap-1">
                       <Layers size={13} /> {topics.length} {topics.length === 1 ? "topic" : "topics"}
@@ -668,6 +716,8 @@ function CourseOverview({ course, topics, currentUser, enrollment, enrolling, on
                 )}
               </ol>
             </div>
+
+            <CourseReviews course={course} enrollment={enrollment} currentUser={currentUser} />
           </div>
 
           <div>

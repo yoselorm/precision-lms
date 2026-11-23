@@ -1,73 +1,81 @@
-import React, { useState } from "react";
+import React from "react";
 import { useSelector } from "react-redux";
-import { Award, Download } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Award, Download, Loader2, ShieldCheck } from "lucide-react";
 import Header from "../components/Header";
-import CertificateView from "../components/CertificateView";
-import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectCertificatesByUser } from "../store/slices/enrollmentsSlice";
-import { selectAllCourses } from "../store/slices/coursesSlice";
+import { selectIssuedCertificates, selectIssuedCertificatesStatus } from "../store/slices/certificatesSlice";
 import { usePageData } from "../hooks/usePageData";
-import { loadMyLearning } from "../store/loadAppData";
+import { loadMyCertificates } from "../store/loadAppData";
+import { shortDate } from "../utils/time";
 
+// The learner's certificates as issued by the server — each with its PDF
+// and a verification code anyone can check on the Verify page.
 export default function CertificatesPage({ onMenuClick }) {
-  usePageData(loadMyLearning);
-  const currentUser = useSelector(selectCurrentUser);
-  const courses = useSelector(selectAllCourses);
-  const completedEnrollments = useSelector((state) => selectCertificatesByUser(state, currentUser.id));
-  const [viewing, setViewing] = useState(null);
-
-  const certificates = completedEnrollments
-    .map((e) => ({ enrollment: e, course: courses.find((c) => c.id === e.courseId) }))
-    .filter(({ course }) => course?.certificate);
+  usePageData(loadMyCertificates);
+  const certificates = useSelector(selectIssuedCertificates);
+  const status = useSelector(selectIssuedCertificatesStatus);
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
       <Header title="My Certificates" subtitle="Earned once you complete a course that has a certificate enabled." onMenuClick={onMenuClick} />
 
       <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 lg:p-8">
-        {certificates.map(({ enrollment, course }) => (
-          <div key={enrollment.id} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5">
+        {certificates.map((cert) => (
+          <div key={cert.id} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50">
               <Award size={22} className="text-amber-500" />
             </div>
-            <h3 className="text-sm font-bold text-stone-900 leading-snug">{course.certificate.title}</h3>
+            <h3 className="text-sm font-bold leading-snug text-stone-900">{cert.title}</h3>
+            {cert.courseTitle && <p className="mt-0.5 text-xs text-stone-600">{cert.courseTitle}</p>}
             <p className="mt-1 text-xs text-stone-500">
-              Completed {new Date(enrollment.completedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+              Issued {shortDate(cert.issuedAt)}
+              {cert.issuer && ` · ${cert.issuer}`}
             </p>
+            {cert.code && (
+              <p className="mt-2 w-fit rounded-md bg-stone-50 px-2 py-1 font-mono text-[11px] tracking-wide text-stone-600" title="Verification code">
+                {cert.code}
+              </p>
+            )}
             <div className="mt-auto flex gap-2 pt-4">
-              <button
-                onClick={() => setViewing({ enrollment, course })}
-                className="flex-1 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
-              >
-                View certificate
-              </button>
-              <button
-                onClick={() => setViewing({ enrollment, course })}
-                title="Download (opens preview)"
-                className="rounded-lg border border-stone-200 px-2.5 py-2 text-stone-500 hover:bg-stone-50"
-              >
-                <Download size={14} />
-              </button>
+              {cert.pdfUrl ? (
+                <a
+                  href={cert.pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800"
+                >
+                  <Download size={13} /> Download PDF
+                </a>
+              ) : (
+                <span className="flex flex-1 items-center justify-center rounded-lg bg-stone-100 px-3 py-2 text-xs font-semibold text-stone-400">PDF not ready yet</span>
+              )}
+              {cert.code && (
+                <Link
+                  to={`/verify/${encodeURIComponent(cert.code)}`}
+                  title="Open the public verification page"
+                  className="flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50"
+                >
+                  <ShieldCheck size={13} /> Verify
+                </Link>
+              )}
             </div>
           </div>
         ))}
 
         {certificates.length === 0 && (
-          <p className="text-sm text-stone-400">
-            No certificates yet — complete a course with a certificate enabled to see it here.
+          <p className="flex items-center gap-2 text-sm text-stone-400">
+            {status === "loading" || status === "idle" ? (
+              <>
+                <Loader2 size={15} className="animate-spin" /> Loading your certificates...
+              </>
+            ) : status === "failed" ? (
+              "Couldn't load your certificates. Refresh the page to try again."
+            ) : (
+              "No certificates yet — complete a course with a certificate enabled to see it here."
+            )}
           </p>
         )}
       </div>
-
-      {viewing && (
-        <CertificateView
-          certificate={viewing.course.certificate}
-          learnerName={currentUser.name}
-          courseTitle={viewing.course.title}
-          completedAt={viewing.enrollment.completedAt}
-          onClose={() => setViewing(null)}
-        />
-      )}
     </div>
   );
 }

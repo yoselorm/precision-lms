@@ -27,6 +27,12 @@ export function getEnrollment(id) {
   return apiRequest(`/v1/user/enrollments/${id}`);
 }
 
+// Admin: enrolls someone else into an approved course (optionally with a
+// due date). Idempotent — returns the existing enrollment if there is one.
+export function adminEnroll(userId, courseId, dueDate) {
+  return apiRequest("/v1/admin/enrollments", { method: "POST", body: { user_id: userId, course_id: courseId, due_date: dueDate || null } });
+}
+
 export function enroll(courseId) {
   return apiRequest("/v1/user/enrollments", { method: "POST", body: { course_id: courseId } });
 }
@@ -167,7 +173,14 @@ export function deleteComment(id) {
   return apiRequest(`/v1/user/comments/${id}`, { method: "DELETE" });
 }
 
-// ── Certificates (admin templates) ──
+// ── Certificates ──
+// A learner's issued certificates: { id, verification_code, issued_at,
+// pdf_url, certificate_title, issuer, course_id, course_title }.
+export function listMyCertificates() {
+  return apiRequest("/v1/user/certificates");
+}
+
+// Admin templates.
 export function listCertificates() {
   return apiRequest("/v1/admin/certificates");
 }
@@ -182,6 +195,13 @@ export function updateCertificate(id, body) {
 
 export function deleteCertificate(id) {
   return apiRequest(`/v1/admin/certificates/${id}`, { method: "DELETE" });
+}
+
+// ── Quizzes ──
+// Every quiz the learner can take (topic quizzes from enrolled courses and
+// class quizzes), each with their own attempts_used / best_score / passed.
+export function listMyQuizzes() {
+  return apiRequest("/v1/user/quizzes");
 }
 
 // ── Dashboards ──

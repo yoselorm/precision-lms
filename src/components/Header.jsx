@@ -1,93 +1,171 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Search, Menu, Clock, Award, Users, TrendingDown, BellOff, Ban } from "lucide-react";
-import { useSelector } from "react-redux";
+import { Bell, Search, Menu, Award, Users, BellOff, BookOpen, FileText, CalendarDays, Star, Info, Loader2, CheckCheck } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectPendingTrainers } from "../store/slices/usersSlice";
-import { selectAllEnrollments, selectEnrollmentsByUser } from "../store/slices/enrollmentsSlice";
-import { selectClassesByTrainer } from "../store/slices/classesSlice";
-import { selectAllCourses, selectPendingCourses } from "../store/slices/coursesSlice";
+import {
+  fetchNotifications,
+  fetchUnreadCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  selectNotifications,
+  selectUnreadCount,
+  selectNotificationsStatus,
+  selectHasMoreNotifications,
+} from "../store/slices/notificationsSlice";
+import { timeAgo } from "../utils/time";
 
-function daysUntil(dateStr) {
-  return Math.ceil((new Date(dateStr) - new Date()) / (24 * 60 * 60 * 1000));
+// How often the unread badge is refreshed (there's no live push).
+const POLL_MS = 60000;
+
+// Where a notification leads, and its icon. Types are short strings from
+// the server ("certificate_issued", "trainer_pending_approval", ...); new
+// ones can appear at any time, so this matches on what the type mentions
+// and falls back to the ids it carries. Unknown types still show their
+// message — they just don't link anywhere.
+function notificationTarget({ type, data }, role) {
+  const t = type.toLowerCase();
+  const courseId = data.course_id;
+  const classId = data.school_class_id || data.class_id;
+  if (t.includes("certificate")) {
+    if (role === "admin") return { icon: Award, to: "/admin/certificates" };
+    return { icon: Award, to: role === "learner" ? "/certificates" : null };
+  }
+  if (t.includes("trainer") || t.includes("user") || t.includes("registration") || t.includes("account")) {
+    return { icon: Users, to: role === "admin" ? "/admin/users" : null };
+  }
+  if (t.includes("rating") || t.includes("review")) {
+    return { icon: Star, to: role === "admin" ? "/admin/reviews" : courseId ? `/course/${courseId}` : null };
+  }
+  if (t.includes("assignment") || t.includes("submission") || t.includes("grade")) return { icon: FileText, to: "/assignments" };
+  if (t.includes("class") || classId) return { icon: CalendarDays, to: classId ? `/classes/${classId}` : "/classes" };
+  if (t.includes("course") || t.includes("revision") || t.includes("enroll") || courseId) {
+    if (role === "admin") return { icon: BookOpen, to: courseId ? `/admin/courses/${courseId}/manage` : "/admin/courses" };
+    if (role === "trainer" && !t.includes("enroll")) return { icon: BookOpen, to: courseId ? `/trainer/courses/${courseId}/manage` : "/trainer/courses" };
+    return { icon: BookOpen, to: courseId ? `/course/${courseId}` : "/my-courses" };
+  }
+  return { icon: Info, to: null };
 }
 
-// Role-aware, derived from existing state each render — no dedicated
-// notifications slice needed since everything here is computable from data
-// that already exists (enrollments, classes, pending approvals).
-function useNotifications(currentUser) {
-  const pendingTrainers = useSelector(selectPendingTrainers);
-  const pendingCourses = useSelector(selectPendingCourses);
-  const allEnrollments = useSelector(selectAllEnrollments);
-  const myClasses = useSelector((state) => (currentUser?.role === "trainer" ? selectClassesByTrainer(state, currentUser.id) : []));
-  const myEnrollments = useSelector((state) => (currentUser ? selectEnrollmentsByUser(state, currentUser.id) : []));
-  const courses = useSelector(selectAllCourses);
+// The bell: the account's notifications from the server. The unread count
+// is polled (and refreshed when the tab regains focus); the list loads when
+// the panel opens.
+function NotificationBell({ currentUser }) {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const items = useSelector(selectNotifications);
+  const unread = useSelector(selectUnreadCount);
+  const status = useSelector(selectNotificationsStatus);
+  const hasMore = useSelector(selectHasMoreNotifications);
+  const token = useSelector((state) => state.auth.token);
+  const [open, setOpen] = useState(false);
 
-  return useMemo(() => {
-    if (!currentUser) return [];
-    const items = [];
+  useEffect(() => {
+    if (!token) return undefined;
+    const refresh = () => {
+      if (document.visibilityState === "visible") dispatch(fetchUnreadCount());
+    };
+    refresh();
+    const timer = setInterval(refresh, POLL_MS);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [dispatch, token]);
 
-    if (currentUser.role === "admin") {
-      if (pendingTrainers.length > 0) {
-        items.push({
-          id: "pending-trainers",
-          icon: Users,
-          text: `${pendingTrainers.length} trainer application${pendingTrainers.length > 1 ? "s" : ""} awaiting approval`,
-          to: "/admin/users",
-        });
-      }
-      if (pendingCourses.length > 0) {
-        items.push({
-          id: "pending-courses",
-          icon: Clock,
-          text: `${pendingCourses.length} course${pendingCourses.length > 1 ? "s" : ""} or course update${pendingCourses.length > 1 ? "s" : ""} awaiting approval`,
-          to: "/admin/courses",
-        });
-      }
+  const toggle = () => {
+    if (!open) {
+      dispatch(fetchNotifications());
+      dispatch(fetchUnreadCount());
     }
+    setOpen((v) => !v);
+  };
 
-    if (currentUser.role === "trainer") {
-      const startingSoon = myClasses.filter((c) => c.status === "upcoming" && daysUntil(c.startDate) <= 7 && daysUntil(c.startDate) >= 0);
-      startingSoon.forEach((c) =>
-        items.push({ id: `class-soon-${c.id}`, icon: Clock, text: `"${c.title}" starts in ${daysUntil(c.startDate)} day(s)`, to: `/classes/${c.id}/manage` })
-      );
-      const laggingClasses = myClasses.filter((c) => {
-        if (c.status !== "active") return false;
-        const relevant = allEnrollments.filter((e) => e.courseId === c.courseId && c.memberIds.includes(e.userId));
-        if (relevant.length === 0) return false;
-        const avg = relevant.reduce((sum, e) => sum + e.progress, 0) / relevant.length;
-        return avg < 40;
-      });
-      laggingClasses.forEach((c) => items.push({ id: `class-lag-${c.id}`, icon: TrendingDown, text: `"${c.title}" progress is falling behind`, to: `/classes/${c.id}/manage` }));
-      courses
-        .filter((c) => c.createdBy === currentUser.id && c.revision?.status === "denied")
-        .forEach((c) =>
-          items.push({ id: `update-denied-${c.id}`, icon: Ban, text: `Your update to "${c.title}" was denied — see the feedback`, to: `/trainer/courses/${c.id}/manage` })
-        );
-      courses
-        .filter((c) => c.createdBy === currentUser.id && c.status === "denied")
-        .forEach((c) =>
-          items.push({ id: `course-denied-${c.id}`, icon: Ban, text: `"${c.title}" was denied — see the admin's feedback`, to: `/trainer/courses/${c.id}/manage` })
-        );
+  const openItem = (n, to) => {
+    if (!n.readAt) dispatch(markNotificationRead({ id: n.id }));
+    if (to) {
+      setOpen(false);
+      navigate(to);
     }
+  };
 
-    if (currentUser.role === "learner") {
-      const recentCerts = myEnrollments.filter((e) => e.status === "completed" && e.completedAt && Math.abs(daysUntil(e.completedAt)) <= 7);
-      recentCerts.forEach((e) => {
-        const course = courses.find((c) => c.id === e.courseId);
-        if (course?.certificate) items.push({ id: `cert-${e.id}`, icon: Award, text: `New certificate earned: ${course.title}`, to: "/certificates" });
-      });
-    }
-
-    return items;
-  }, [currentUser, pendingTrainers, pendingCourses, allEnrollments, myClasses, myEnrollments, courses]);
+  return (
+    <div className="relative">
+      <button onClick={toggle} className="relative text-stone-400 hover:text-stone-600" aria-label={unread ? `Notifications (${unread} unread)` : "Notifications"}>
+        <Bell size={18} />
+        {unread > 0 && (
+          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-40 mt-2.5 w-80 max-w-[calc(100vw-2rem)] animate-scale-in rounded-xl border border-stone-200 bg-white p-2 shadow-lg sm:w-96">
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Notifications</p>
+              {unread > 0 && (
+                <button
+                  onClick={() => dispatch(markAllNotificationsRead())}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-50"
+                >
+                  <CheckCheck size={12} /> Mark all as read
+                </button>
+              )}
+            </div>
+            {items.length === 0 ? (
+              status === "loading" ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-stone-400">
+                  <Loader2 size={14} className="animate-spin" /> Loading...
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+                  <BellOff size={20} className="text-stone-300" />
+                  <p className="text-xs text-stone-400">{status === "failed" ? "Couldn't load notifications." : "You're all caught up."}</p>
+                </div>
+              )
+            ) : (
+              <div className="max-h-96 space-y-0.5 overflow-y-auto">
+                {items.map((n) => {
+                  const { icon: Icon, to } = notificationTarget(n, currentUser.role);
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => openItem(n, to)}
+                      className={`flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-xs hover:bg-stone-50 ${n.readAt ? "text-stone-500" : "bg-brand-50/60 text-stone-800"}`}
+                    >
+                      <Icon size={14} className={`mt-0.5 shrink-0 ${n.readAt ? "text-stone-400" : "text-brand-600"}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block leading-snug ${n.readAt ? "" : "font-semibold"}`}>{n.message || "New notification"}</span>
+                        <span className="mt-0.5 block text-[10px] text-stone-400">{timeAgo(n.createdAt)}</span>
+                      </span>
+                      {!n.readAt && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-600" />}
+                    </button>
+                  );
+                })}
+                {hasMore && (
+                  <button
+                    onClick={() => dispatch(fetchNotifications({ more: true }))}
+                    disabled={status === "loading"}
+                    className="w-full rounded-lg py-2 text-[11px] font-semibold text-stone-500 hover:bg-stone-50 disabled:opacity-50"
+                  >
+                    {status === "loading" ? "Loading..." : "Show older"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function Header({ title, subtitle, showSearch = false, onMenuClick }) {
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
-  const notifications = useNotifications(currentUser);
-  const [notifOpen, setNotifOpen] = useState(false);
   const initials = currentUser?.name
     ?.split(" ")
     .map((n) => n[0])
@@ -124,45 +202,7 @@ export default function Header({ title, subtitle, showSearch = false, onMenuClic
           rather than rendering a second, redundant login button. */}
       {currentUser && (
         <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-            <div className="relative">
-              <button onClick={() => setNotifOpen((v) => !v)} className="relative text-stone-400 hover:text-stone-600">
-                <Bell size={18} />
-                {notifications.length > 0 && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500" />}
-              </button>
-              {notifOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute right-0 z-40 mt-2.5 w-72 animate-scale-in rounded-xl border border-stone-200 bg-white p-2 shadow-lg sm:w-80">
-                    <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">Notifications</p>
-                    {notifications.length === 0 ? (
-                      <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
-                        <BellOff size={20} className="text-stone-300" />
-                        <p className="text-xs text-stone-400">You're all caught up.</p>
-                      </div>
-                    ) : (
-                      <div className="max-h-80 space-y-0.5 overflow-y-auto">
-                        {notifications.map((n) => {
-                          const Icon = n.icon;
-                          return (
-                            <button
-                              key={n.id}
-                              onClick={() => {
-                                setNotifOpen(false);
-                                navigate(n.to);
-                              }}
-                              className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-stone-700 hover:bg-stone-50"
-                            >
-                              <Icon size={14} className="mt-0.5 shrink-0 text-brand-600" />
-                              <span className="leading-snug">{n.text}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+            <NotificationBell currentUser={currentUser} />
             <div className="flex items-center gap-2.5">
               {currentUser.avatarUrl ? (
                 <img src={currentUser.avatarUrl} alt={currentUser.name} className="h-8 w-8 rounded-full object-cover" />

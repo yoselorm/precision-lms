@@ -1,4 +1,4 @@
-import { apiRequest, fetchAllPages } from "./client";
+import { apiRequest, fetchAllPages, toQuery } from "./client";
 
 // Admins hit /v1/admin/*, learners and trainers /v1/user/*. Most course
 // routes exist on both sides with the same shape.
@@ -13,6 +13,11 @@ export function listCourses(guard, { mine } = {}) {
 // The public catalog — approved courses only, no sign-in needed.
 export function listPublicCourses() {
   return fetchAllPages("/v1/courses", {}, { auth: false });
+}
+
+// One approved course from the public catalog (404 otherwise).
+export function getPublicCourse(id) {
+  return apiRequest(`/v1/courses/${id}`, { auth: false });
 }
 
 export function getCourse(guard, id) {
@@ -146,6 +151,12 @@ export function submitRevision(courseId, revisionId) {
 
 export function discardRevision(courseId, revisionId) {
   return apiRequest(`/v1/user/courses/${courseId}/revisions/${revisionId}`, { method: "DELETE" });
+}
+
+// Admin: course updates across every course — `status: "pending"` for the
+// ones awaiting review. Each includes its course and full topics.
+export function listCourseRevisions(status) {
+  return apiRequest(`/v1/admin/course-revisions${toQuery({ status })}`);
 }
 
 export function reviewRevision(courseId, revisionId, status, reason) {

@@ -17,6 +17,7 @@ import TrainerCourses from "./pages/TrainerCourses";
 import AdminUsers from "./pages/AdminUsers";
 import AdminClasses from "./pages/AdminClasses";
 import AdminEnroll from "./pages/AdminEnroll";
+import AdminReviews from "./pages/AdminReviews";
 import ClassesCatalog from "./pages/ClassesCatalog";
 import CertificatesPage from "./pages/CertificatesPage";
 import AdminCertificates from "./pages/AdminCertificates";
@@ -178,6 +179,14 @@ function AppShell() {
             element={
               <RequireRole allowed={["admin"]}>
                 <CertificateDesigner onMenuClick={() => setMobileOpen(true)} />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/admin/reviews"
+            element={
+              <RequireRole allowed={["admin"]}>
+                <AdminReviews onMenuClick={() => setMobileOpen(true)} />
               </RequireRole>
             }
           />

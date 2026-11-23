@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import * as api from "../../api/learning";
-import { normalizeEnrollment, normalizeWatchProgress } from "../../api/normalize";
+import { normalizeEnrollment, normalizeWatchProgress, normalizeMyQuiz } from "../../api/normalize";
 import { apiThunk, listThunk } from "../apiThunk";
 import { upsertCourses } from "./coursesSlice";
 import { logout } from "./authSlice";
@@ -10,6 +10,12 @@ const initialState = {
   // anyone else's.
   enrollments: [],
   status: "idle",
+  // Admin: who was enrolled into what from the Enroll page this session
+  // ({ userId, courseId }) — the API can't list other people's enrollments.
+  adminEnrolled: [],
+  // The learner's quizzes (GET /user/quizzes), with their attempt stats.
+  myQuizzes: [],
+  myQuizzesStatus: "idle",
 };
 
 // Enrollments embed their course, so those are merged into the courses list.
@@ -18,6 +24,20 @@ export const fetchEnrollments = listThunk("enrollments/fetch", async (_, { getSt
   dispatch(upsertCourses(enrollments.map((e) => e.course).filter(Boolean)));
   return { enrollments, userId: getState().auth.currentUser?.id };
 });
+
+// Admin: enrolls several users into a course. Each request is idempotent;
+// resolves to { enrolled: [userId], failed: [{ userId, message }] }.
+export const adminEnrollUsers = apiThunk("enrollments/adminEnroll", async ({ userIds, courseId, dueDate }) => {
+  const results = await Promise.allSettled(userIds.map((userId) => api.adminEnroll(userId, courseId, dueDate)));
+  const enrolled = [];
+  const failed = [];
+  results.forEach((result, i) =>
+    result.status === "fulfilled" ? enrolled.push(userIds[i]) : failed.push({ userId: userIds[i], message: result.reason?.message || "Failed" })
+  );
+  return { courseId, enrolled, failed };
+});
+
+export const fetchMyQuizzes = apiThunk("enrollments/fetchMyQuizzes", () => api.listMyQuizzes());
 
 // Idempotent server-side — returns the existing enrollment if there is one.
 export const enrollInCourse = apiThunk("enrollments/enroll", async ({ courseId }, { getState, dispatch }) => {
@@ -98,6 +118,20 @@ const enrollmentsSlice = createSlice({
         state.status = "failed";
       })
       .addCase(enrollInCourse.fulfilled, (state, action) => upsert(state, action.payload))
+      .addCase(adminEnrollUsers.fulfilled, (state, action) => {
+        const { courseId, enrolled } = action.payload;
+        enrolled.forEach((userId) => state.adminEnrolled.push({ userId, courseId }));
+      })
+      .addCase(fetchMyQuizzes.pending, (state) => {
+        state.myQuizzesStatus = "loading";
+      })
+      .addCase(fetchMyQuizzes.fulfilled, (state, action) => {
+        state.myQuizzes = action.payload.map(normalizeMyQuiz);
+        state.myQuizzesStatus = "succeeded";
+      })
+      .addCase(fetchMyQuizzes.rejected, (state) => {
+        state.myQuizzesStatus = "failed";
+      })
       .addCase(completeLesson.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(fetchEnrollment.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(saveLessonProgress.fulfilled, (state, action) => {

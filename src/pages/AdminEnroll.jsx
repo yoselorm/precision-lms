@@ -1,37 +1,53 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { ClipboardCheck, Info } from "lucide-react";
+import { ClipboardCheck, AlertTriangle } from "lucide-react";
 import Header from "../components/Header";
 import { selectPublicCourses } from "../store/slices/coursesSlice";
 import { selectLearners } from "../store/slices/usersSlice";
-import { selectAllEnrollments } from "../store/slices/enrollmentsSlice";
+import { adminEnrollUsers } from "../store/slices/enrollmentsSlice";
+import { useApiAction } from "../hooks/useApiAction";
 import { usePageData } from "../hooks/usePageData";
 import { loadEnrollPage } from "../store/loadAppData";
 
-// The API only lets learners enroll themselves (POST /user/enrollments), so
-// admin enrollment is shown but disabled until an admin endpoint exists.
-const ADMIN_ENROLL_SUPPORTED = false;
-
+// Admins enroll learners into an approved course, optionally with a due
+// date. The server can't list other people's enrollments, so "already
+// enrolled" only knows about enrollments made here this session — enrolling
+// someone twice is harmless (the server returns the existing enrollment).
 export default function AdminEnroll({ onMenuClick }) {
   usePageData(loadEnrollPage);
   const courses = useSelector(selectPublicCourses);
   const learners = useSelector(selectLearners);
-  const enrollments = useSelector(selectAllEnrollments);
+  const enrolledHere = useSelector((state) => state.enrollments.adminEnrolled);
+  const [run, busy] = useApiAction();
 
   const [courseId, setCourseId] = useState(courses[0]?.id ?? "");
+  // Courses load after the first render.
+  useEffect(() => {
+    if (!courseId && courses[0]) setCourseId(courses[0].id);
+  }, [courseId, courses]);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [dueDate, setDueDate] = useState("");
   const [confirmation, setConfirmation] = useState(null);
+  const [failures, setFailures] = useState([]);
 
   const toggleUser = (id) => setSelectedUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const alreadyEnrolled = (userId) => enrollments.some((e) => e.userId === userId && e.courseId === courseId);
+  const alreadyEnrolled = (userId) => enrolledHere.some((e) => e.userId === userId && e.courseId === courseId);
+  const nameOf = (userId) => learners.find((u) => u.id === userId)?.name || "A learner";
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!ADMIN_ENROLL_SUPPORTED || !courseId || selectedUserIds.length === 0) return;
-    setConfirmation(`Enrolled ${selectedUserIds.length} learner(s) into ${courses.find((c) => c.id === courseId)?.title}.`);
-    setSelectedUserIds([]);
+    if (!courseId || selectedUserIds.length === 0) return;
+    setConfirmation(null);
+    setFailures([]);
+    const result = await run(adminEnrollUsers({ userIds: selectedUserIds, courseId, dueDate }));
+    if (!result) return;
+    const title = courses.find((c) => c.id === courseId)?.title;
+    if (result.enrolled.length) {
+      setConfirmation(`Enrolled ${result.enrolled.length} learner${result.enrolled.length > 1 ? "s" : ""} into "${title}"${dueDate ? `, due ${dueDate}` : ""}.`);
+    }
+    setFailures(result.failed.map((f) => `${nameOf(f.userId)}: ${f.message}`));
+    setSelectedUserIds(result.failed.map((f) => f.userId));
   };
 
   return (
@@ -39,10 +55,17 @@ export default function AdminEnroll({ onMenuClick }) {
       <Header title="Enroll users" subtitle="Assign a course to one or more learners." onMenuClick={onMenuClick} />
 
       <div className="mx-auto w-full max-w-2xl space-y-5 p-4 sm:p-6 lg:p-8">
-        {!ADMIN_ENROLL_SUPPORTED && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
-            <Info size={15} className="mt-0.5 shrink-0" />
-            Enrolling other users isn't available from the server yet — learners can enroll themselves from the catalog or a class page.
+        {failures.length > 0 && (
+          <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-800">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">Some learners couldn't be enrolled (still selected, so you can retry):</p>
+              <ul className="mt-1 list-disc pl-4">
+                {failures.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
         {confirmation && (
@@ -100,7 +123,7 @@ export default function AdminEnroll({ onMenuClick }) {
                     />
                     <img src={u.avatarUrl} alt={u.name} className="h-6 w-6 rounded-full object-cover" />
                     <span className="text-stone-700">{u.name}</span>
-                    <span className="ml-auto text-[10px] text-stone-400">{enrolled ? "Already enrolled" : u.department}</span>
+                    <span className="ml-auto text-[10px] text-stone-400">{enrolled ? "Enrolled" : u.department}</span>
                   </label>
                 );
               })}
@@ -109,10 +132,10 @@ export default function AdminEnroll({ onMenuClick }) {
 
           <button
             type="submit"
-            disabled={!ADMIN_ENROLL_SUPPORTED || selectedUserIds.length === 0}
+            disabled={busy || !courseId || selectedUserIds.length === 0}
             className="w-full rounded-lg bg-brand-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Enroll selected learners
+            {busy ? "Enrolling..." : selectedUserIds.length > 1 ? `Enroll ${selectedUserIds.length} learners` : "Enroll selected learner"}
           </button>
         </form>
       </div>

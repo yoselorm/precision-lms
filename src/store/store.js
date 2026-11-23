@@ -11,6 +11,8 @@ import uiReducer from "./slices/uiSlice";
 import categoriesReducer from "./slices/categoriesSlice";
 import certificatesReducer from "./slices/certificatesSlice";
 import dashboardReducer from "./slices/dashboardSlice";
+import notificationsReducer from "./slices/notificationsSlice";
+import ratingsReducer from "./slices/ratingsSlice";
 import { loadState, saveState, debounce } from "../utils/persistence";
 import { configureApiClient } from "../api/client";
 import { fetchMe } from "../api/auth";
@@ -28,6 +30,8 @@ export const store = configureStore({
     categories: categoriesReducer,
     certificates: certificatesReducer,
     dashboard: dashboardReducer,
+    notifications: notificationsReducer,
+    ratings: ratingsReducer,
     ui: uiReducer,
   },
   preloadedState: preload(loadState()),

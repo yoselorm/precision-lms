@@ -563,40 +563,19 @@ function QuizManager({ currentUser }) {
   );
 }
 
-// Learners see every quiz they can take: topic quizzes from the courses
-// they're enrolled in, plus the quizzes of classes they belong to.
-function LearnerQuizzes({ currentUser }) {
+// Learners see every quiz they can take — topic quizzes from the courses
+// they're enrolled in and the quizzes of classes they belong to — with
+// their attempt stats, all from one request (GET /user/quizzes).
+function LearnerQuizzes() {
   const navigate = useNavigate();
-  const dispatch = useDispatch();
-  const allCourses = useSelector(selectAllCourses);
-  const allClasses = useSelector(selectAllClasses);
-  const enrollments = useSelector(selectAllEnrollments).filter((e) => e.userId === currentUser.id);
-  const classAttempts = useSelector((state) => state.classes.classQuizAttempts).filter((a) => a.userId === currentUser.id);
+  const quizzes = useSelector((state) => state.enrollments.myQuizzes);
+  const status = useSelector((state) => state.enrollments.myQuizzesStatus);
   const [filter, setFilter] = useState("all");
 
-  const enrolledIds = new Set(enrollments.map((e) => e.courseId));
-  const courses = allCourses.filter((c) => enrolledIds.has(c.id));
-  const classes = allClasses.filter((c) => c.memberIds.includes(currentUser.id));
-
-  // Class quizzes load with each class's detail; course quizzes with each
-  // enrolled course's content.
-  const classIds = classes.map((c) => c.id).join(",");
-  const courseIds = courses.map((c) => c.id).join(",");
-  useEffect(() => {
-    classIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchClass(id)));
-    courseIds.split(",").filter(Boolean).forEach((id) => dispatch(fetchCourseContent(id)));
-  }, [dispatch, classIds, courseIds]);
-
-  const rows = collectQuizzes(courses, classes).map((row) => {
-    const attempts =
-      row.type !== "class"
-        ? enrollments.find((e) => e.courseId === row.course.id)?.topicQuizzes?.[quizKey(row.owner)]?.attempts ?? []
-        : classAttempts.filter((a) => a.classId === row.cls.id);
-    const best = attempts.length ? Math.max(...attempts.map((a) => a.score)) : null;
-    const passed = attempts.some((a) => a.passed);
-    const outOfAttempts = !!row.quiz.maxAttempts && attempts.length >= row.quiz.maxAttempts;
-    const to = row.type === "class" ? `/classes/${row.cls.id}/quiz` : quizRoute(row.course.id, row.owner);
-    return { ...row, attempts, best, passed, outOfAttempts, to };
+  const rows = quizzes.map((q) => {
+    const outOfAttempts = !!q.maxAttempts && q.attemptsUsed >= q.maxAttempts;
+    const to = q.type === "class" ? `/classes/${q.classId}/quiz` : quizRoute(q.courseId, { type: "topic", id: q.topicId });
+    return { ...q, outOfAttempts, to };
   });
 
   const visible = filter === "todo" ? rows.filter((r) => !r.passed) : filter === "passed" ? rows.filter((r) => r.passed) : rows;
@@ -608,19 +587,25 @@ function LearnerQuizzes({ currentUser }) {
         onChange={setFilter}
         tabs={[
           { id: "all", label: `All (${rows.length})` },
-          { id: "todo", label: "To do" },
-          { id: "passed", label: "Passed" },
+          { id: "todo", label: `To do (${rows.filter((r) => !r.passed).length})` },
+          { id: "passed", label: `Passed (${rows.filter((r) => r.passed).length})` },
         ]}
       />
 
       {visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-400">
-          {rows.length === 0 ? "No quizzes yet. Enroll in a course or join a class to see its quizzes here." : "Nothing in this list."}
+          {status === "loading" && rows.length === 0
+            ? "Loading your quizzes..."
+            : status === "failed" && rows.length === 0
+            ? "Couldn't load your quizzes. Refresh the page to try again."
+            : rows.length === 0
+            ? "No quizzes yet. Enroll in a course or join a class to see its quizzes here."
+            : "Nothing in this list."}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((row) => (
-            <div key={row.key} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5">
+            <div key={`${row.type}-${row.id}`} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <TypePill type={row.type} />
                 {row.passed ? (
@@ -629,22 +614,19 @@ function LearnerQuizzes({ currentUser }) {
                   </span>
                 ) : row.outOfAttempts ? (
                   <span className="text-[10px] font-bold text-rose-600">No attempts left</span>
-                ) : row.attempts.length ? (
+                ) : row.attemptsUsed ? (
                   <span className="text-[10px] font-bold text-amber-700">Not passed yet</span>
                 ) : (
                   <span className="text-[10px] font-bold text-stone-400">Not started</span>
                 )}
               </div>
               <h3 className="text-sm font-bold leading-snug text-stone-900">{row.title}</h3>
-              <p className="mt-0.5 text-xs text-stone-500">
-                {row.belongsTo}
-                {row.type !== "class" && ` › ${row.detail}`}
-              </p>
+              <p className="mt-0.5 text-xs text-stone-500">{row.type === "class" ? row.classTitle : row.courseTitle}</p>
               <p className="mt-3 text-[11px] text-stone-400">
-                {row.quiz.questions.length} questions · pass mark {row.quiz.passingScore}%
-                {row.quiz.timeLimitMins ? ` · ${row.quiz.timeLimitMins} min` : ""}
-                {row.quiz.maxAttempts ? ` · ${row.attempts.length}/${row.quiz.maxAttempts} attempts used` : ""}
-                {row.best !== null && ` · best ${row.best}%`}
+                {row.questionCount} {row.questionCount === 1 ? "question" : "questions"} · pass mark {row.passingScore}%
+                {row.timeLimitMins ? ` · ${row.timeLimitMins} min` : ""}
+                {row.maxAttempts ? ` · ${row.attemptsUsed}/${row.maxAttempts} attempts used` : row.attemptsUsed ? ` · ${row.attemptsUsed} attempt${row.attemptsUsed > 1 ? "s" : ""}` : ""}
+                {row.bestScore !== null && ` · best ${row.bestScore}%`}
               </p>
               <button
                 onClick={() => navigate(row.to)}
@@ -652,7 +634,7 @@ function LearnerQuizzes({ currentUser }) {
                   row.passed || row.outOfAttempts ? "border border-stone-200 text-stone-700 hover:bg-stone-50" : "bg-brand-700 text-white hover:bg-brand-800"
                 }`}
               >
-                {row.passed ? "Review" : row.outOfAttempts ? "View results" : row.attempts.length ? "Try again" : "Start quiz"}
+                {row.passed ? "Review" : row.outOfAttempts ? "View results" : row.attemptsUsed ? "Try again" : "Start quiz"}
               </button>
             </div>
           ))}
@@ -680,7 +662,7 @@ export default function QuizzesPage({ onMenuClick }) {
         }
         onMenuClick={onMenuClick}
       />
-      {isLearner ? <LearnerQuizzes currentUser={currentUser} /> : <QuizManager currentUser={currentUser} />}
+      {isLearner ? <LearnerQuizzes /> : <QuizManager currentUser={currentUser} />}
     </div>
   );
 }

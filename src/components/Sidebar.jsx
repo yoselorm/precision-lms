@@ -23,6 +23,7 @@ import {
   LogIn,
   KeyRound,
   History,
+  Star,
 } from "lucide-react";
 import { selectCurrentUser, selectRealUser, startPreview, stopPreview, logoutUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
@@ -44,6 +45,7 @@ const adminLinks = [
   { to: "/admin/users", label: "Users", icon: UserPlus },
   { to: "/admin/classes", label: "Classes", icon: CalendarDays },
   { to: "/admin/certificates", label: "Certificates", icon: Award },
+  { to: "/admin/reviews", label: "Reviews", icon: Star },
   { to: "/admin/enroll", label: "Enroll users", icon: ClipboardList },
   { to: "/admin/roles", label: "Roles & permissions", icon: KeyRound },
   { to: "/admin/audit-log", label: "Audit log", icon: History },

@@ -18,31 +18,58 @@ const initialState = {
 export const fetchCourses = listThunk("courses/fetch", async (_, { getState }) => {
   const guard = guardOf(getState);
   if (!guard) return coursesApi.listPublicCourses();
-  if (guard === "admin") return coursesApi.listCourses("admin");
-  const catalog = await coursesApi.listCourses("user");
-  if (roleOf(getState) !== "trainer") return catalog;
-  const mine = await coursesApi.listCourses("user", { mine: true });
-  const byId = new Map([...catalog, ...mine].map((c) => [c.id, c]));
-  return [...byId.values()];
+  // Only the public catalog carries ratings so far, so signed-in lists
+  // borrow them from it (if it fails, courses just show no stars).
+  const ratings = coursesApi.listPublicCourses().catch(() => []);
+  let courses;
+  if (guard === "admin") courses = await coursesApi.listCourses("admin");
+  else {
+    const catalog = await coursesApi.listCourses("user");
+    if (roleOf(getState) !== "trainer") courses = catalog;
+    else {
+      const mine = await coursesApi.listCourses("user", { mine: true });
+      courses = [...new Map([...catalog, ...mine].map((c) => [c.id, c])).values()];
+    }
+  }
+  return withPublicRatings(courses, await ratings);
 });
 
-// A course, topic or lesson's quiz, or null — a 404 just means it has none
-// (or, for course/lesson quizzes, that the server doesn't offer them yet).
+function withPublicRatings(courses, publicCourses) {
+  const byId = new Map(publicCourses.map((c) => [c.id, c]));
+  return courses.map((c) => {
+    const pub = byId.get(c.id);
+    if (!pub || c.average_rating !== undefined) return c;
+    return { ...c, average_rating: pub.average_rating ?? null, ratings_count: pub.ratings_count ?? 0 };
+  });
+}
+
+// The server's "no such route" 404 (as opposed to "this has no quiz").
+const isMissingRoute = (err) => err instanceof ApiError && (err.status === 405 || (err.status === 404 && /route .* could not be found/i.test(err.message)));
+
+// Quiz owner types whose routes the server turned out not to have (course
+// and lesson quizzes, until the backend adds them) — not asked again this
+// session, rather than one failing request per lesson.
+const missingQuizRoutes = new Set();
+
+// A course, topic or lesson's quiz, or null — a 404 just means it has none.
 async function loadQuiz(owner) {
+  if (missingQuizRoutes.has(owner.type)) return null;
   try {
     return normalizeQuiz(await coursesApi.getQuiz(owner));
   } catch (err) {
+    if (isMissingRoute(err)) missingQuizRoutes.add(owner.type);
     if (err instanceof ApiError && (err.status === 404 || err.status === 405)) return null;
     throw err;
   }
 }
 
 // User-side reads (learner view, or with answers for the owning trainer).
+// Topics say whether they have a quiz, so only those are fetched.
 async function loadQuizzes(topics) {
   return Promise.all(
     topics.map(async (topic) => {
       const [quiz, lessons] = await Promise.all([
-        loadQuiz({ type: "topic", id: topic.id }),
+        topic.quizSummary ? loadQuiz({ type: "topic", id: topic.id }) : null,
         Promise.all(topic.lessons.map(async (lesson) => ({ ...lesson, quiz: await loadQuiz({ type: "lesson", id: lesson.id }) }))),
       ]);
       return { ...topic, quiz, lessons };
@@ -87,7 +114,8 @@ export const fetchCourseContent = apiThunk("courses/fetchContent", async (course
     const [apiTopics, quizzes] = await Promise.all([coursesApi.listTopics("admin", courseId), coursesApi.listAdminQuizzes()]);
     const topics = attachAdminQuizzes(apiTopics.map(normalizeTopic), quizzes);
     const courseQuiz = normalizeQuiz(quizzes.find((q) => isCourseQuiz(q) && q.owner_id === courseId));
-    return { courseId, topics, courseQuiz, revision: null };
+    // Pending updates come from the revisions list (fetchPendingRevisions).
+    return { courseId, topics, courseQuiz, revision: undefined };
   }
   if (!course || course.createdBy !== user?.id) {
     try {
@@ -225,11 +253,15 @@ export const discardRevision = contentEdit("courses/discardRevision", ({ courseI
   coursesApi.discardRevision(courseId, revisionId)
 );
 
-// Admin side: needs the revision's id, which the admin API doesn't expose
-// yet — only works when one is already known on the course.
-export const reviewRevision = contentEdit("courses/reviewRevision", ({ courseId, revisionId, approve, reason }) => {
-  if (!revisionId) throw new Error("The server doesn't list pending course updates for admins yet.");
-  return coursesApi.reviewRevision(courseId, revisionId, approve ? "approved" : "denied", reason);
+// Admin: every course update awaiting review, attached to its course as
+// `revision` (with the proposed topics, for previewing).
+export const fetchPendingRevisions = apiThunk("courses/fetchPendingRevisions", () => coursesApi.listCourseRevisions("pending"));
+
+export const reviewRevision = apiThunk("courses/reviewRevision", async ({ courseId, revisionId, approve, reason }, { dispatch }) => {
+  if (!revisionId) throw new Error("This update couldn't be found — refresh the page and try again.");
+  await coursesApi.reviewRevision(courseId, revisionId, approve ? "approved" : "denied", reason);
+  await Promise.all([dispatch(fetchCourseContent(courseId)), dispatch(fetchPendingRevisions())]);
+  return { courseId, revisionId };
 });
 
 function upsert(state, apiCourse) {
@@ -243,6 +275,9 @@ function upsert(state, apiCourse) {
   const existing = state.courses[index];
   state.courses[index] = {
     ...incoming,
+    // Responses without ratings (enrollments, classes) keep the known ones.
+    averageRating: incoming.averageRating === undefined ? existing.averageRating : incoming.averageRating,
+    ratingsCount: incoming.ratingsCount === undefined ? existing.ratingsCount : incoming.ratingsCount,
     topics: existing.topics,
     quiz: existing.quiz,
     revision: existing.revision,
@@ -296,7 +331,8 @@ const coursesSlice = createSlice({
         state.courses[index] = {
           ...withTopics(state.courses[index], sorted),
           quiz: courseQuiz ?? null,
-          revision: sortedRevision,
+          // undefined: this load doesn't cover revisions — keep what's known.
+          revision: revision === undefined ? state.courses[index].revision : sortedRevision,
           contentStatus: "succeeded",
           contentError: null,
         };
@@ -321,6 +357,16 @@ const coursesSlice = createSlice({
       .addCase(setCourseOwner.fulfilled, (state, action) => upsert(state, action.payload))
       .addCase(deleteCourse.fulfilled, (state, action) => {
         state.courses = state.courses.filter((c) => c.id !== action.payload.courseId);
+      })
+      .addCase(fetchPendingRevisions.fulfilled, (state, action) => {
+        const pending = new Map(action.payload.map((r) => [r.course_id || r.course?.id, r]));
+        state.courses.forEach((course) => {
+          const r = pending.get(course.id);
+          if (r) {
+            const revision = normalizeRevision(r);
+            course.revision = { ...revision, topics: [...revision.topics].sort((a, b) => a.sortOrder - b.sortOrder) };
+          } else if (course.revision?.status === "pending") course.revision = null;
+        });
       })
       .addCase(fetchAdminQuizzes.fulfilled, (state, action) => {
         state.courses.forEach((course) => {
