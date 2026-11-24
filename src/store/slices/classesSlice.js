@@ -9,9 +9,9 @@ import { logout } from "./authSlice";
 export const initialState = {
   classes: [],
   status: "idle",
-  // Classes each user has joined, by user id. The API doesn't expose class
-  // rosters or a "classes I've joined" list, so this is remembered locally
-  // (and persisted) from join responses until the backend can answer it.
+  // Classes each user has joined, by user id, remembered (and persisted)
+  // from join responses — class lists don't say who's a member, only the
+  // detail's roster does.
   joinedIds: {},
   // Class quiz results seen this session — the API has no attempt history.
   classQuizAttempts: [],
@@ -72,13 +72,14 @@ export const setCourseMandatory = classEdit("classes/setMandatory", ({ classId, 
 export const setClassQuiz = classEdit("classes/setQuiz", ({ classId, ...quiz }) => api.saveClassQuiz(classId, quizToApi(quiz)));
 export const removeClassQuiz = classEdit("classes/removeQuiz", ({ classId }) => api.deleteClassQuiz(classId));
 
+// The roster comes with a class's detail; classes joined in this browser
+// count too (the join may be newer than the last detail load).
 function applyMembership(state, cls) {
-  const isMember = Object.values(state.joinedIds).some((ids) => ids.includes(cls.id));
-  if (!isMember) return cls;
-  const memberIds = Object.entries(state.joinedIds)
+  const joined = Object.entries(state.joinedIds)
     .filter(([, ids]) => ids.includes(cls.id))
     .map(([userId]) => userId);
-  return { ...cls, memberIds };
+  if (!joined.length) return cls;
+  return { ...cls, memberIds: [...new Set([...cls.memberIds, ...joined])] };
 }
 
 function upsert(state, apiClass, extra = {}) {
@@ -91,8 +92,10 @@ function upsert(state, apiClass, extra = {}) {
   const existing = state.classes[index];
   state.classes[index] = {
     ...incoming,
-    // The list response omits courses/quiz — keep what the detail fetch had.
+    // The list response omits courses/quiz/roster — keep what the detail fetch had.
     courses: incoming.courses ?? existing.courses,
+    members: incoming.members ?? existing.members,
+    memberIds: incoming.members ? incoming.memberIds : [...new Set([...existing.memberIds, ...incoming.memberIds])],
     quiz: "quiz" in extra ? extra.quiz : existing.quiz,
   };
 }

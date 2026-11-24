@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft, HelpCircle, Users, CalendarDays, Plus, Trash2, Loader2, Settings2, X } from "lucide-react";
 import Header from "../components/Header";
+import ClassRoster from "../components/ClassRoster";
 import ThumbnailPicker from "../components/ThumbnailPicker";
 import CourseTopicsManager from "../components/CourseTopicsManager";
 import { selectClassById, selectClassesStatus, fetchClass, updateClass, addCourseToClass, removeCourseFromClass, setCourseMandatory } from "../store/slices/classesSlice";
@@ -418,6 +419,8 @@ export default function ClassMaterialsPage({ onMenuClick }) {
             )}
           </div>
         </div>
+
+        <ClassRoster cls={cls} showRoster />
 
         {!cls.courses ? (
           <div className="flex items-center justify-center gap-2 rounded-2xl border border-stone-200 bg-white p-8 text-sm text-stone-400">

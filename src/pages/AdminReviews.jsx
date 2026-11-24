@@ -28,8 +28,7 @@ export default function AdminReviews({ onMenuClick }) {
   }, [dispatch, courseId]);
 
   const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
-  // The admin course list doesn't carry rating counts, so every course is
-  // offered (most only appear in the public/user lists with their numbers).
+  // Every course is offered, with its review count when it has any.
   const sorted = useMemo(() => [...courses].sort((a, b) => a.title.localeCompare(b.title)), [courses]);
   const selected = courseById.get(courseId);
 

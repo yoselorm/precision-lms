@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { CheckSquare, Square, History, Timer, Loader2 } from "lucide-react";
 import { sameSet, formatClock } from "../utils/quiz";
 import { QuizResult, QuizReview } from "./QuizPieces";
+import { parseServerTime } from "../utils/quizAttempts";
 import QuizPreview from "./QuizPreview";
 
 // The actual "taking the quiz" experience — questions, live countdown if the
@@ -33,6 +34,8 @@ export default function QuizTaker({
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [showAttemptHistory, setShowAttemptHistory] = useState(false);
   const [attemptId, setAttemptId] = useState(null);
+  // When the server attempt began — the timer counts down from there.
+  const attemptStartedAt = useRef(null);
   const [attemptError, setAttemptError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,8 +77,11 @@ export default function QuizTaker({
     setAttemptError(null);
     startAttempt().then((result) => {
       if (cancelled) return;
-      if (result?.id) setAttemptId(result.id);
-      else setAttemptError(result?.error || "Couldn't start the quiz.");
+      if (result?.id) {
+        // A resumed attempt keeps its original start time (and time limit).
+        attemptStartedAt.current = parseServerTime(result.started_at) ?? Date.now();
+        setAttemptId(result.id);
+      } else setAttemptError(result?.error || "Couldn't start the quiz.");
     });
     return () => {
       cancelled = true;
@@ -123,7 +129,8 @@ export default function QuizTaker({
       setSecondsLeft(null);
       return;
     }
-    setSecondsLeft(timeLimitMins * 60);
+    const elapsed = attemptStartedAt.current ? Math.floor((Date.now() - attemptStartedAt.current) / 1000) : 0;
+    setSecondsLeft(Math.max(1, timeLimitMins * 60 - Math.max(0, elapsed)));
     const interval = setInterval(() => {
       setSecondsLeft((prev) => (prev === null ? null : Math.max(0, prev - 1)));
     }, 1000);

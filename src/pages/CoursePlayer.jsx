@@ -18,10 +18,11 @@ import CourseReviews, { MyCourseRating } from "../components/CourseReviews";
 import { RatingSummary, StarRating } from "../components/Stars";
 import ModalOverlay from "../components/ModalOverlay";
 import { selectMyRating } from "../store/slices/ratingsSlice";
+import { fetchQuizAttempts, selectQuizAttempts } from "../store/slices/quizAttemptsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { COMPLETE_SHARE, markCourseStarted } from "../utils/watchProgress";
 import { bunnyEmbedUrl } from "../utils/videoEmbed";
-import { quizKey, quizRoute } from "../utils/quiz";
+import { quizRoute } from "../utils/quiz";
 import { usePageData } from "../hooks/usePageData";
 import { loadCoursePage } from "../store/loadAppData";
 
@@ -151,6 +152,15 @@ export default function CoursePlayer({ onMenuClick }) {
     }
     return {};
   }, [course, topics, items, activeItemId]);
+
+  // The open quiz's past attempts, from the server.
+  const activeQuizOwner = activeQuiz?.owner;
+  const quizAttempts = useSelector((state) => selectQuizAttempts(state, activeQuizOwner));
+  const loadAttempts = !!activeQuizOwner && currentUser?.role === "learner" && !!enrollment;
+  useEffect(() => {
+    if (loadAttempts) dispatch(fetchQuizAttempts({ owner: activeQuizOwner }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, loadAttempts, activeQuizOwner?.type, activeQuizOwner?.id]);
 
   if (!course && (coursesStatus === "idle" || coursesStatus === "loading")) {
     return (
@@ -601,7 +611,7 @@ export default function CoursePlayer({ onMenuClick }) {
             {isLearner ? (
               <QuizIntroCard
                 quiz={activeQuiz.quiz}
-                attempts={enrollment?.topicQuizzes?.[quizKey(activeQuiz.owner)]?.attempts}
+                attempts={quizAttempts}
                 heading={activeQuiz.quiz.title || activeQuiz.title}
                 subheading={activeQuiz.owner.type === "course" ? course.title : activeQuiz.owner.type === "topic" ? activeTopic?.title : items.find((i) => i.id === activeQuiz.owner.id)?.title}
                 onStart={() => navigate(quizRoute(course.id, activeQuiz.owner))}

@@ -563,9 +563,10 @@ function QuizManager({ currentUser }) {
   );
 }
 
-// Learners see every quiz they can take — topic quizzes from the courses
-// they're enrolled in and the quizzes of classes they belong to — with
-// their attempt stats, all from one request (GET /user/quizzes).
+// Learners see every quiz they can take — course, topic and lesson quizzes
+// from the courses they're enrolled in, and the quizzes of classes they
+// belong to — with their attempt stats, all from one request
+// (GET /user/quizzes).
 function LearnerQuizzes() {
   const navigate = useNavigate();
   const quizzes = useSelector((state) => state.enrollments.myQuizzes);
@@ -574,7 +575,8 @@ function LearnerQuizzes() {
 
   const rows = quizzes.map((q) => {
     const outOfAttempts = !!q.maxAttempts && q.attemptsUsed >= q.maxAttempts;
-    const to = q.type === "class" ? `/classes/${q.classId}/quiz` : quizRoute(q.courseId, { type: "topic", id: q.topicId });
+    const owner = q.type === "lesson" ? { type: "lesson", id: q.lessonId } : q.type === "course" ? { type: "course", id: q.courseId } : { type: "topic", id: q.topicId };
+    const to = q.type === "class" ? `/classes/${q.classId}/quiz` : quizRoute(q.courseId, owner);
     return { ...q, outOfAttempts, to };
   });
 
@@ -621,7 +623,11 @@ function LearnerQuizzes() {
                 )}
               </div>
               <h3 className="text-sm font-bold leading-snug text-stone-900">{row.title}</h3>
-              <p className="mt-0.5 text-xs text-stone-500">{row.type === "class" ? row.classTitle : row.courseTitle}</p>
+              <p className="mt-0.5 text-xs text-stone-500">
+                {row.type === "class" ? row.classTitle : row.courseTitle}
+                {row.type === "course" && " · final quiz"}
+                {row.type === "lesson" && " · lesson quiz"}
+              </p>
               <p className="mt-3 text-[11px] text-stone-400">
                 {row.questionCount} {row.questionCount === 1 ? "question" : "questions"} · pass mark {row.passingScore}%
                 {row.timeLimitMins ? ` · ${row.timeLimitMins} min` : ""}

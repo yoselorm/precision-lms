@@ -13,6 +13,7 @@ import certificatesReducer from "./slices/certificatesSlice";
 import dashboardReducer from "./slices/dashboardSlice";
 import notificationsReducer from "./slices/notificationsSlice";
 import ratingsReducer from "./slices/ratingsSlice";
+import quizAttemptsReducer from "./slices/quizAttemptsSlice";
 import { loadState, saveState, debounce } from "../utils/persistence";
 import { configureApiClient } from "../api/client";
 import { fetchMe } from "../api/auth";
@@ -32,6 +33,7 @@ export const store = configureStore({
     dashboard: dashboardReducer,
     notifications: notificationsReducer,
     ratings: ratingsReducer,
+    quizAttempts: quizAttemptsReducer,
     ui: uiReducer,
   },
   preloadedState: preload(loadState()),

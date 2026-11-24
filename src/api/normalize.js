@@ -157,8 +157,8 @@ export function normalizeCourse(c) {
     demoVideoUrl: c.demo_video_url || "",
     // Not returned by the API yet.
     studentsCount: 0,
-    // null until someone has rated it; undefined when this response doesn't
-    // carry ratings at all (only the public catalog does, for now).
+    // null until someone has rated it; undefined when a response doesn't
+    // carry ratings (upserts then keep the known numbers).
     averageRating: c.average_rating === undefined ? undefined : c.average_rating,
     ratingsCount: c.ratings_count === undefined ? undefined : c.ratings_count ?? 0,
     updatedDate: day(c.updated_at || c.created_at),
@@ -318,8 +318,10 @@ export function normalizeMyQuiz(q) {
     timeLimitMins: q.time_limit_mins || 0,
     maxAttempts: q.max_attempts || 0,
     questionCount: q.question_count ?? 0,
-    type: q.source_type === "class" ? "class" : "topic",
+    // "topic" | "lesson" | "course" | "class"
+    type: ["class", "course", "lesson"].includes(q.source_type) ? q.source_type : "topic",
     topicId: q.topic_id || null,
+    lessonId: q.lesson_id || null,
     courseId: q.course_id || null,
     courseTitle: q.course_title || "",
     classId: q.school_class_id || null,
@@ -328,6 +330,15 @@ export function normalizeMyQuiz(q) {
     bestScore: q.best_score ?? null,
     passed: !!q.passed,
   };
+}
+
+// Oldest first (the order quiz screens number them in); attempts that were
+// started but never submitted have no score and are left out.
+export function normalizeQuizAttempts(list) {
+  return (list || [])
+    .filter((a) => a.score !== null && a.score !== undefined)
+    .map((a) => ({ id: a.id, score: a.score, passed: !!a.passed, submittedAt: a.submitted_at || a.started_at }))
+    .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
 }
 
 export const normalizeWatchProgress = (p) => ({ watchedSeconds: p.watched_seconds || 0, position: p.position || 0, duration: p.duration || 0 });
@@ -359,9 +370,11 @@ export function normalizeClass(c) {
     trainerName: c.trainer?.name || null,
     // The API doesn't return the mandatory flag on a class's courses yet.
     courses: c.courses ? c.courses.map((course) => ({ courseId: course.id, mandatory: false })) : null,
-    // Rosters aren't exposed — only a count.
-    memberIds: [],
-    memberCount: c.member_count ?? 0,
+    // The roster ({ id, name, email, joinedAt }) comes with a class's
+    // detail; lists only carry the count (members stays null then).
+    members: c.members ? c.members.map((m) => ({ id: m.id, name: m.name || "Unknown", email: m.email || "", joinedAt: m.joined_at || null })) : null,
+    memberIds: (c.members || []).map((m) => m.id),
+    memberCount: c.member_count ?? c.members?.length ?? 0,
     startDate: day(c.start_date),
     endDate: day(c.end_date),
     status: c.status,

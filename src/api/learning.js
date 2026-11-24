@@ -114,6 +114,13 @@ export function startQuizAttempt({ topicId, classId, courseId, lessonId }) {
   return apiRequest(path, { method: "POST" });
 }
 
+// The caller's own past attempts on a quiz, most recent first — owner is
+// { type: "topic" | "lesson" | "course" | "class", id }.
+const ATTEMPT_OWNER_PATH = { topic: "topics", lesson: "lessons", course: "courses", class: "classes" };
+export function listQuizAttempts(owner) {
+  return apiRequest(`/v1/user/${ATTEMPT_OWNER_PATH[owner.type]}/${owner.id}/quiz/attempts`);
+}
+
 // answers: [{ question_id, selected_option_ids: [] }]
 export function submitQuizAttempt(attemptId, answers) {
   return apiRequest(`/v1/user/quiz-attempts/${attemptId}/submit`, { method: "POST", body: { answers } });

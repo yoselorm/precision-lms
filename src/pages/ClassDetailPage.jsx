@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -17,7 +17,9 @@ import {
 import Header from "../components/Header";
 import ProgressBar from "../components/ProgressBar";
 import QuizIntroCard from "../components/QuizIntroCard";
-import { selectClassById, selectClassesStatus, selectClassQuizAttempts, fetchClass, joinClass } from "../store/slices/classesSlice";
+import { selectClassById, selectClassesStatus, fetchClass, joinClass } from "../store/slices/classesSlice";
+import { fetchQuizAttempts, selectQuizAttempts } from "../store/slices/quizAttemptsSlice";
+import ClassRoster from "../components/ClassRoster";
 import { selectAllCourses } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { enrollInCourse } from "../store/slices/enrollmentsSlice";
@@ -37,8 +39,14 @@ const STATUS_STYLES = {
 function ClassQuizSection({ cls, canManage, isMember }) {
   const navigate = useNavigate();
   const currentUser = useSelector(selectCurrentUser);
-  const attempts = useSelector((state) => selectClassQuizAttempts(state, cls.id, currentUser.id));
+  const dispatch = useDispatch();
+  const owner = useMemo(() => ({ type: "class", id: cls.id }), [cls.id]);
+  const attempts = useSelector((state) => selectQuizAttempts(state, owner));
   const hasQuiz = (cls.quiz?.questions?.length ?? 0) > 0;
+  const loadAttempts = hasQuiz && isMember && currentUser.role === "learner";
+  useEffect(() => {
+    if (loadAttempts) dispatch(fetchQuizAttempts({ owner }));
+  }, [dispatch, owner, loadAttempts]);
 
   if (!hasQuiz && !canManage) return null;
 
@@ -220,15 +228,7 @@ export default function ClassDetailPage({ onMenuClick }) {
           )}
         </div>
 
-        {/* The API only exposes a member count, not the roster. */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5">
-          <h3 className="mb-1 flex items-center gap-1.5 text-sm font-bold text-stone-800">
-            <Users size={14} /> Students ({cls.memberCount})
-          </h3>
-          <p className="text-xs text-stone-400">
-            {cls.memberCount === 0 ? "No students enrolled in this class yet." : "The student roster isn't available yet."}
-          </p>
-        </div>
+        <ClassRoster cls={cls} showRoster={canManage} isMember={isMember} />
 
         {(canManage || isMember) && (
           <div className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">

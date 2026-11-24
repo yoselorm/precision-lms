@@ -4,7 +4,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft } from "lucide-react";
 import Header from "../components/Header";
 import QuizTaker from "../components/QuizTaker";
-import { selectClassById, selectClassQuizAttempts, submitClassQuizAttempt, fetchClass } from "../store/slices/classesSlice";
+import { selectClassById, fetchClass } from "../store/slices/classesSlice";
+import { fetchQuizAttempts, recordAttempt, selectQuizAttempts } from "../store/slices/quizAttemptsSlice";
 import { quizAttemptHandlers } from "../utils/quizAttempts";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import { pushToast } from "../store/slices/uiSlice";
@@ -18,13 +19,17 @@ export default function ClassQuizPage({ onMenuClick }) {
 
   const cls = useSelector((state) => selectClassById(state, classId));
   const currentUser = useSelector(selectCurrentUser);
-  const attempts = useSelector((state) => (currentUser ? selectClassQuizAttempts(state, classId, currentUser.id) : []));
+  const owner = useMemo(() => ({ type: "class", id: classId }), [classId]);
+  const attempts = useSelector((state) => selectQuizAttempts(state, owner));
   const quiz = cls?.quiz;
 
-  // The class detail fetch is what loads its quiz.
+  // The class detail fetch is what loads its quiz; past attempts come from
+  // the server.
+  const isLearner = currentUser?.role === "learner";
   useEffect(() => {
     dispatch(fetchClass(classId));
-  }, [dispatch, classId]);
+    if (isLearner) dispatch(fetchQuizAttempts({ owner }));
+  }, [dispatch, classId, owner, isLearner]);
 
   const handlers = useMemo(
     () => quiz && quizAttemptHandlers({ classId }, quiz, (message) => dispatch(pushToast({ type: "error", message }))),
@@ -58,7 +63,8 @@ export default function ClassQuizPage({ onMenuClick }) {
 
   const handleSubmit = (score, passed) => {
     const wasLastAttempt = !!cls.quiz.maxAttempts && attempts.length + 1 >= cls.quiz.maxAttempts;
-    dispatch(submitClassQuizAttempt({ classId: cls.id, userId: currentUser.id, score, passingScore: cls.quiz.passingScore, passed }));
+    dispatch(recordAttempt({ owner, score, passed }));
+    dispatch(fetchQuizAttempts({ owner }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",

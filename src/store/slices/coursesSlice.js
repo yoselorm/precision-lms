@@ -18,37 +18,19 @@ const initialState = {
 export const fetchCourses = listThunk("courses/fetch", async (_, { getState }) => {
   const guard = guardOf(getState);
   if (!guard) return coursesApi.listPublicCourses();
-  // Only the public catalog carries ratings so far, so signed-in lists
-  // borrow them from it (if it fails, courses just show no stars).
-  const ratings = coursesApi.listPublicCourses().catch(() => []);
-  let courses;
-  if (guard === "admin") courses = await coursesApi.listCourses("admin");
-  else {
-    const catalog = await coursesApi.listCourses("user");
-    if (roleOf(getState) !== "trainer") courses = catalog;
-    else {
-      const mine = await coursesApi.listCourses("user", { mine: true });
-      courses = [...new Map([...catalog, ...mine].map((c) => [c.id, c])).values()];
-    }
-  }
-  return withPublicRatings(courses, await ratings);
+  if (guard === "admin") return coursesApi.listCourses("admin");
+  const catalog = await coursesApi.listCourses("user");
+  if (roleOf(getState) !== "trainer") return catalog;
+  const mine = await coursesApi.listCourses("user", { mine: true });
+  return [...new Map([...catalog, ...mine].map((c) => [c.id, c])).values()];
 });
-
-function withPublicRatings(courses, publicCourses) {
-  const byId = new Map(publicCourses.map((c) => [c.id, c]));
-  return courses.map((c) => {
-    const pub = byId.get(c.id);
-    if (!pub || c.average_rating !== undefined) return c;
-    return { ...c, average_rating: pub.average_rating ?? null, ratings_count: pub.ratings_count ?? 0 };
-  });
-}
 
 // The server's "no such route" 404 (as opposed to "this has no quiz").
 const isMissingRoute = (err) => err instanceof ApiError && (err.status === 405 || (err.status === 404 && /route .* could not be found/i.test(err.message)));
 
-// Quiz owner types whose routes the server turned out not to have (course
-// and lesson quizzes, until the backend adds them) — not asked again this
-// session, rather than one failing request per lesson.
+// Quiz owner types whose routes the server turned out not to have (an older
+// backend without course/lesson quizzes) — not asked again this session,
+// rather than one failing request per lesson.
 const missingQuizRoutes = new Set();
 
 // A course, topic or lesson's quiz, or null — a 404 just means it has none.

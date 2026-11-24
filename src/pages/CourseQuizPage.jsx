@@ -4,14 +4,16 @@ import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Header from "../components/Header";
 import QuizTaker from "../components/QuizTaker";
-import { selectCourseById } from "../store/slices/coursesSlice";
+import { selectCourseById, fetchCourseContent } from "../store/slices/coursesSlice";
 import { selectCurrentUser } from "../store/slices/authSlice";
-import { selectEnrollment, submitQuizScore } from "../store/slices/enrollmentsSlice";
+import { selectEnrollment } from "../store/slices/enrollmentsSlice";
+import { fetchQuizAttempts, recordAttempt, selectQuizAttempts } from "../store/slices/quizAttemptsSlice";
 import { pushToast } from "../store/slices/uiSlice";
 import { getQuiz } from "../api/courses";
 import { normalizeQuiz } from "../api/normalize";
 import { quizAttemptHandlers } from "../utils/quizAttempts";
-import { quizKey } from "../utils/quiz";
+
+const HEADINGS = { course: "Final quiz", topic: "Knowledge check", lesson: "Lesson quiz" };
 
 // A course, topic or lesson quiz gets its own focused page — reached from
 // the "Start quiz" button on the course player. The URL says which:
@@ -25,6 +27,13 @@ export default function CourseQuizPage({ onMenuClick }) {
   const course = useSelector((state) => selectCourseById(state, courseId));
   const currentUser = useSelector(selectCurrentUser);
   const enrollment = useSelector((state) => (currentUser ? selectEnrollment(state, currentUser.id, courseId) : undefined));
+
+  // Opened straight from a link (e.g. My Quizzes): load the course's content
+  // so the topic/lesson can be named.
+  const contentStatus = course?.contentStatus;
+  useEffect(() => {
+    if (contentStatus === "idle") dispatch(fetchCourseContent(courseId));
+  }, [dispatch, courseId, contentStatus]);
 
   const topics = course?.revision?.topics ?? course?.topics ?? [];
   const knownTopic = topics.find((t) => t.id === topicId);
@@ -50,8 +59,15 @@ export default function CourseQuizPage({ onMenuClick }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner.type, owner.id, canRead]);
   const quiz = quizState.quiz;
-  const key = quizKey(owner);
   const subheading = ownerTitle || quiz?.title || "Quiz";
+
+  // Past attempts come from the server (attempt limits, best score).
+  const attempts = useSelector((state) => selectQuizAttempts(state, owner));
+  const isEnrolledLearner = currentUser?.role === "learner" && !!enrollment;
+  useEffect(() => {
+    if (isEnrolledLearner) dispatch(fetchQuizAttempts({ owner }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, isEnrolledLearner, owner.type, owner.id]);
 
   const handlers = useMemo(
     () =>
@@ -109,9 +125,9 @@ export default function CourseQuizPage({ onMenuClick }) {
   }
 
   const handleSubmit = (score, passed, timedOut) => {
-    const previousAttempts = enrollment?.topicQuizzes?.[key]?.attempts?.length ?? 0;
-    const wasLastAttempt = !!quiz.maxAttempts && previousAttempts + 1 >= quiz.maxAttempts;
-    dispatch(submitQuizScore({ userId: currentUser.id, courseId: course.id, topicId: key, score, passingScore: quiz.passingScore, passed }));
+    const wasLastAttempt = !!quiz.maxAttempts && attempts.length + 1 >= quiz.maxAttempts;
+    dispatch(recordAttempt({ owner, score, passed }));
+    dispatch(fetchQuizAttempts({ owner }));
     dispatch(
       pushToast({
         type: passed ? "success" : "error",
@@ -126,7 +142,7 @@ export default function CourseQuizPage({ onMenuClick }) {
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto bg-stone-50">
-      <Header title={owner.type === "course" ? "Final quiz" : "Knowledge check"} subtitle={`${course.title} · ${subheading}`} onMenuClick={onMenuClick} />
+      <Header title={HEADINGS[owner.type]} subtitle={`${course.title} · ${subheading}`} onMenuClick={onMenuClick} />
       <div className="mx-auto w-full max-w-2xl space-y-5 p-4 sm:p-6 lg:p-8">
         <button
           onClick={() => navigate(`/course/${courseId}`)}
@@ -136,8 +152,8 @@ export default function CourseQuizPage({ onMenuClick }) {
         </button>
         <QuizTaker
           quiz={quiz}
-          attempts={enrollment?.topicQuizzes?.[key]?.attempts}
-          heading={owner.type === "course" ? "Final quiz" : "Knowledge check"}
+          attempts={attempts}
+          heading={HEADINGS[owner.type]}
           subheading={subheading}
           onSubmit={handleSubmit}
           onBack={() => navigate(`/course/${courseId}`)}
