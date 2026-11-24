@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Search, Menu, Award, Users, BellOff, BookOpen, FileText, CalendarDays, Star, Info, Loader2, CheckCheck } from "lucide-react";
+import { Bell, Search, Menu, Award, Users, BellOff, BookOpen, FileText, CalendarDays, Star, Info, Loader2, CheckCheck, CheckCircle2, Ban, Clock } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { selectCurrentUser } from "../store/slices/authSlice";
 import {
@@ -18,24 +18,48 @@ import { timeAgo } from "../utils/time";
 // How often the unread badge is refreshed (there's no live push).
 const POLL_MS = 60000;
 
-// Where a notification leads, and its icon. Types are short strings from
-// the server ("certificate_issued", "trainer_pending_approval", ...); new
-// ones can appear at any time, so this matches on what the type mentions
-// and falls back to the ids it carries. Unknown types still show their
-// message — they just don't link anywhere.
-function notificationTarget({ type, data }, role) {
+const isDenied = (value) => /denied|rejected/i.test(String(value || ""));
+
+// Where each notification type leads, and its icon — the types the backend
+// sends (type → who gets it → extra fields):
+//   trainer_status_changed   trainer  status (approved/denied)
+//   course_status_changed    trainer  course_id, status, reason
+//   course_revision_reviewed trainer  course_id, decision, reason
+//   certificate_issued       learner  issued_certificate_id, verification_code, pdf_url
+//   assignment_due_soon      member   assignment_id, due_date
+//   trainer_pending_approval admin    user_id
+//   course_pending_review    admin    course_id
+const NOTIFICATION_TYPES = {
+  trainer_status_changed: ({ data }) =>
+    isDenied(data.status) ? { icon: Ban, to: null } : { icon: CheckCircle2, to: "/trainer/courses" },
+  course_status_changed: ({ data }) => ({
+    icon: isDenied(data.status) ? Ban : CheckCircle2,
+    to: data.course_id ? `/trainer/courses/${data.course_id}/manage` : "/trainer/courses",
+  }),
+  course_revision_reviewed: ({ data }) => ({
+    icon: isDenied(data.decision) ? Ban : CheckCircle2,
+    to: data.course_id ? `/trainer/courses/${data.course_id}/manage` : "/trainer/courses",
+  }),
+  certificate_issued: () => ({ icon: Award, to: "/certificates" }),
+  assignment_due_soon: () => ({ icon: Clock, to: "/assignments" }),
+  trainer_pending_approval: () => ({ icon: Users, to: "/admin/users" }),
+  course_pending_review: ({ data }) => ({ icon: BookOpen, to: data.course_id ? `/admin/courses/${data.course_id}/manage` : "/admin/courses" }),
+};
+
+// Types added later fall back to a guess from what the type mentions and
+// the ids it carries. Unknown types still show their message — they just
+// may not link anywhere.
+function guessTarget({ type, data }, role) {
   const t = type.toLowerCase();
   const courseId = data.course_id;
   const classId = data.school_class_id || data.class_id;
-  if (t.includes("certificate")) {
-    if (role === "admin") return { icon: Award, to: "/admin/certificates" };
-    return { icon: Award, to: role === "learner" ? "/certificates" : null };
-  }
+  if (t.includes("certificate")) return { icon: Award, to: role === "admin" ? "/admin/certificates" : role === "learner" ? "/certificates" : null };
   if (t.includes("trainer") || t.includes("user") || t.includes("registration") || t.includes("account")) {
     return { icon: Users, to: role === "admin" ? "/admin/users" : null };
   }
   if (t.includes("rating") || t.includes("review")) {
-    return { icon: Star, to: role === "admin" ? "/admin/reviews" : courseId ? `/course/${courseId}` : null };
+    if (role === "admin") return { icon: Star, to: t.includes("course") && courseId ? `/admin/courses/${courseId}/manage` : "/admin/reviews" };
+    return { icon: Star, to: courseId ? `/course/${courseId}` : null };
   }
   if (t.includes("assignment") || t.includes("submission") || t.includes("grade")) return { icon: FileText, to: "/assignments" };
   if (t.includes("class") || classId) return { icon: CalendarDays, to: classId ? `/classes/${classId}` : "/classes" };
@@ -45,6 +69,11 @@ function notificationTarget({ type, data }, role) {
     return { icon: BookOpen, to: courseId ? `/course/${courseId}` : "/my-courses" };
   }
   return { icon: Info, to: null };
+}
+
+function notificationTarget(notification, role) {
+  const known = NOTIFICATION_TYPES[notification.type];
+  return known ? known(notification) : guessTarget(notification, role);
 }
 
 // The bell: the account's notifications from the server. The unread count
